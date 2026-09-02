@@ -216,3 +216,50 @@ agent_communication:
     -message: "Added booking day+time selection. Please retest backend: (1) GET /api/availability?date=2026-10-20 returns slots list, taken=[], available=all initially. (2) POST /api/bookings with preferred_time='10:00 - 12:00' saves and returns it (201). (3) After that booking, GET /api/availability for the SAME date must list '10:00 - 12:00' in 'taken' and NOT in 'available'. (4) Cancelled bookings must free their slot (PATCH status=cancelled then availability shows it available again). Use admin admin.actqbncc@gmail.com / mlpmlp652 for protected ops. Avoid wrong-password spam on admin (lockout)."
     -agent: "testing"
     -message: "✅ TIME SLOT FEATURE FULLY FUNCTIONAL (8/8 tests passed - 100% success rate). All requirements verified: (1) GET /api/availability returns correct structure with 5 slots, taken list, and available list. (2) POST /api/bookings with preferred_time saves and returns the time slot correctly. (3) Booked slots correctly appear in 'taken' and are removed from 'available'. (4) Admin authentication and booking retrieval working - Time Test booking found with preferred_time populated. (5) Cancellation correctly frees slots - cancelled bookings excluded from 'taken' and slot returns to 'available'. (6) Cleanup successful. Feature is production-ready."
+
+## FULL FRONTEND VERIFICATION REQUEST (time slots + refresh)
+frontend:
+  - task: "Booking form day+time selection with availability"
+    implemented: true
+    working: true
+    file: "frontend/src/components/Contact.jsx"
+    stuck_count: 0
+    priority: "high"
+    needs_retesting: false
+    status_history:
+        -working: "NA"
+        -agent: "main"
+        -comment: "Added preferred_time select that loads from GET /api/availability after a date is chosen; booked slots disabled; submit blocked if date chosen but no time."
+        -working: true
+        -agent: "testing"
+        -comment: "✅ PASSED - Full booking form with day+time selection tested. Time select correctly DISABLED initially with placeholder 'Select a day first'. After selecting date (2026-12-10), time select ENABLED and loaded 5 available slots from GET /api/availability. Helper text correctly shows '5 of 5 time slots available on this day.' EDGE CASE VERIFIED: Submitting with date but NO time correctly blocked with error toast 'Please choose an available time slot'. After selecting time '10:00 - 12:00' and submitting, POST /api/bookings returned 201, success toast appeared, form reset correctly. Availability correctly reflects booking: re-selecting same date shows '10:00 - 12:00' as disabled/Booked and helper text shows '4 of 5 time slots available'."
+  - task: "Admin dashboard refresh button + time display"
+    implemented: true
+    working: true
+    file: "frontend/src/pages/AdminPage.jsx"
+    stuck_count: 0
+    priority: "high"
+    needs_retesting: false
+    status_history:
+        -working: "NA"
+        -agent: "main"
+        -comment: "Added Refresh button (data-testid admin-refresh-button) to reload bookings; date now shows time next to it."
+        -working: true
+        -agent: "testing"
+        -comment: "✅ PASSED - Admin dashboard fully functional. Login successful with correct credentials (admin.actqbncc@gmail.com / mlpmlp652). Emma Clark booking appears in dashboard with ALL details: service 'Upholstery Cleaning', phone '0466777888', email 'emma.clark@example.com', date '2026-12-10' WITH time '10:00 - 12:00' displayed correctly. Refresh button (data-testid='admin-refresh-button') works correctly - reloads bookings without full page reload, button shows spinning icon briefly, booking still appears after refresh. Admin booking management: Confirm button changes status to 'confirmed', Complete button changes to 'completed', Delete button removes booking card, Sign Out returns to login form. All functionality working perfectly."
+
+test_plan:
+  current_focus: []
+  stuck_tasks: []
+  test_all: false
+  test_priority: "high_first"
+
+agent_communication:
+    -agent: "main"
+    -message: "User requested FULL automated frontend verification of all features. Please run complete e2e UI test (see task details in the frontend testing call)."
+    -agent: "testing"
+    -message: "✅ FULL END-TO-END UI TEST COMPLETED - ALL TESTS PASSED (6/6 - 100% success rate). Test 1: Landing page navigation - All navbar links (Home, Services, Gallery, Reviews, Contact), hero section (heading, button, logo), 6 service cards, 6 gallery items, 4 review cards, footer all verified. Test 2: Booking form with day+time selection - Time select disabled initially, enables after date selection, loads 5 available slots, shows helper text, edge case (submit without time) correctly blocked with error toast, successful submission with form reset. Test 3: Availability reflects booking - Booked slot '10:00 - 12:00' correctly shown as disabled/Booked, available count reduced from 5 to 4. Test 4: Admin login + booking appears with time - Login successful, Emma Clark booking found with all details including time '10:00 - 12:00'. Test 5: Refresh button - Works correctly without full page reload. Test 6: Admin booking management - Confirm, Complete, Delete, Logout all working. Non-critical: 3 failed Cloudflare RUM monitoring requests (does not affect functionality). Application is fully functional and production-ready."
+
+agent_communication:
+    -agent: "testing"
+    -message: "FULL e2e frontend test PASSED 6/6 (100%). Navigation, booking form day+time with availability, submit-without-time blocked, booked slot becomes unavailable, admin login, booking appears with time, refresh button, and confirm/complete/delete/logout all verified working. Only non-critical Cloudflare RUM analytics requests failed (irrelevant)."
