@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { motion } from "framer-motion";
 import { Mail, Phone, MapPin, Send, Loader2 } from "lucide-react";
 import { toast } from "sonner";
@@ -25,14 +25,58 @@ const Contact = () => {
     email: "",
     service: serviceOptions[0],
     preferred_date: "",
+    preferred_time: "",
     message: "",
   });
   const [submitting, setSubmitting] = useState(false);
+  const [slots, setSlots] = useState([]);
+  const [takenSlots, setTakenSlots] = useState([]);
+  const [loadingSlots, setLoadingSlots] = useState(false);
+
+  const today = new Date().toISOString().split("T")[0];
+
+  // Fetch available time slots whenever the chosen date changes.
+  useEffect(() => {
+    if (!form.preferred_date) {
+      setSlots([]);
+      setTakenSlots([]);
+      return;
+    }
+    let active = true;
+    setLoadingSlots(true);
+    axios
+      .get(`${API}/availability`, { params: { date: form.preferred_date } })
+      .then(({ data }) => {
+        if (!active) return;
+        setSlots(data.slots || []);
+        setTakenSlots(data.taken || []);
+        // Clear the selected time if it just became unavailable.
+        setForm((f) =>
+          f.preferred_time && (data.taken || []).includes(f.preferred_time)
+            ? { ...f, preferred_time: "" }
+            : f
+        );
+      })
+      .catch(() => {
+        if (active) {
+          setSlots([]);
+          setTakenSlots([]);
+        }
+      })
+      .finally(() => active && setLoadingSlots(false));
+    return () => {
+      active = false;
+    };
+  }, [form.preferred_date]);
 
   const update = (key) => (e) => setForm({ ...form, [key]: e.target.value });
 
   const handleSubmit = async (e) => {
     e.preventDefault();
+    if (form.preferred_date && !form.preferred_time) {
+      toast.error("Please choose an available time slot for your selected day.");
+      return;
+    }
     setSubmitting(true);
     try {
       await axios.post(`${API}/bookings`, form);
@@ -43,8 +87,11 @@ const Contact = () => {
         email: "",
         service: serviceOptions[0],
         preferred_date: "",
+        preferred_time: "",
         message: "",
       });
+      setSlots([]);
+      setTakenSlots([]);
     } catch (err) {
       toast.error("Could not submit your booking. Please call us on 0466 429 772.");
     } finally {
@@ -196,10 +243,42 @@ const Contact = () => {
               <input
                 data-testid="booking-date-input"
                 type="date"
+                min={today}
                 value={form.preferred_date}
                 onChange={update("preferred_date")}
                 className="glow-input rounded-xl px-5 py-3.5 text-sm w-full [color-scheme:dark]"
               />
+            </div>
+
+            <div>
+              <select
+                data-testid="booking-time-select"
+                value={form.preferred_time}
+                onChange={update("preferred_time")}
+                disabled={!form.preferred_date || loadingSlots}
+                className="glow-input rounded-xl px-5 py-3.5 text-sm w-full disabled:opacity-50 disabled:cursor-not-allowed"
+              >
+                <option value="">
+                  {!form.preferred_date
+                    ? "Select a day first"
+                    : loadingSlots
+                    ? "Checking availability..."
+                    : "Choose an available time"}
+                </option>
+                {slots.map((s) => {
+                  const taken = takenSlots.includes(s);
+                  return (
+                    <option key={s} value={s} disabled={taken}>
+                      {s}{taken ? " — Booked" : ""}
+                    </option>
+                  );
+                })}
+              </select>
+              {form.preferred_date && !loadingSlots && slots.length > 0 && (
+                <p className="mt-2 text-xs text-[#94A3B8]">
+                  {slots.length - takenSlots.length} of {slots.length} time slots available on this day.
+                </p>
+              )}
             </div>
 
             <textarea

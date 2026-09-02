@@ -214,6 +214,7 @@ class Booking(BaseModel):
     email: EmailStr
     service: str
     preferred_date: Optional[str] = None
+    preferred_time: Optional[str] = None
     message: Optional[str] = None
     status: str = "new"
     created_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
@@ -225,6 +226,7 @@ class BookingCreate(BaseModel):
     email: EmailStr
     service: str
     preferred_date: Optional[str] = None
+    preferred_time: Optional[str] = None
     message: Optional[str] = None
 
 
@@ -248,6 +250,33 @@ async def health():
     return {"status": "ok"}
 
 
+# Business time slots offered to customers (local business hours).
+TIME_SLOTS = [
+    "08:00 - 10:00",
+    "10:00 - 12:00",
+    "12:00 - 14:00",
+    "14:00 - 16:00",
+    "16:00 - 18:00",
+]
+
+
+@api_router.get("/availability")
+async def availability(date: str):
+    """Public: returns the configured slots and which are already taken for a date.
+    Only booked time strings are exposed (no customer data)."""
+    taken_docs = await db.bookings.find(
+        {"preferred_date": date, "status": {"$ne": "cancelled"}},
+        {"_id": 0, "preferred_time": 1},
+    ).to_list(500)
+    taken = [d["preferred_time"] for d in taken_docs if d.get("preferred_time")]
+    return {
+        "date": date,
+        "slots": TIME_SLOTS,
+        "taken": taken,
+        "available": [s for s in TIME_SLOTS if s not in taken],
+    }
+
+
 @api_router.post("/bookings", response_model=Booking, status_code=201)
 async def create_booking(input: BookingCreate):
     booking = Booking(**input.model_dump())
@@ -269,6 +298,7 @@ async def create_booking(input: BookingCreate):
         + row("Email", f'<a href="mailto:{escape(booking.email)}" style="color:#00B4D8">{escape(booking.email)}</a>')
         + row("Service", escape(booking.service))
         + row("Preferred Date", escape(booking.preferred_date or "Not specified"))
+        + row("Preferred Time", escape(booking.preferred_time or "Not specified"))
         + row("Message", escape(booking.message or "—"))
         + '</table></td></tr>'
         f'<tr><td style="padding:16px 24px;font-size:12px;color:#94a3b8;border-top:1px solid #e2e8f0">Sent by {escape(EMAIL_FROM_NAME)} booking system. Reply to this email to contact the customer directly.</td></tr>'

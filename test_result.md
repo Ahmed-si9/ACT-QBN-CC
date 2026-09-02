@@ -166,7 +166,7 @@ frontend:
 metadata:
   created_by: "main_agent"
   version: "1.0"
-  test_sequence: 2
+  test_sequence: 3
   run_ui: false
 
 test_plan:
@@ -187,3 +187,32 @@ agent_communication:
 agent_communication:
     -agent: "main"
     -message: "USER BUG REPORT (Arabic): customer bookings not showing in admin panel. ROOT CAUSE: source repo AdminPage.jsx had broken template literals in the login handler (missing backticks), so admin login crashed and bookings could never load. FIXED during migration. Ran full e2e frontend test — PASSED 4/4: navigation, booking submission (POST 201), admin login, booking appears in dashboard with all fields, status confirm/complete/delete, logout. Bug verified FIXED by testing agent."
+
+## FEATURE UPDATE (booking time slots)
+backend:
+  - task: "Time slots: GET /api/availability + preferred_time on bookings"
+    implemented: true
+    working: true
+    file: "backend/server.py"
+    stuck_count: 0
+    priority: "high"
+    needs_retesting: false
+    status_history:
+        -working: "NA"
+        -agent: "main"
+        -comment: "Added GET /api/availability?date=YYYY-MM-DD returning slots/taken/available (excludes cancelled bookings). Added preferred_time field to Booking/BookingCreate and to email + admin card."
+        -working: true
+        -agent: "testing"
+        -comment: "✅ PASSED (8/8 - 100% success rate) - Time slot feature fully functional. Test 1: GET /api/availability returns 5 slots, taken (empty initially), available (all 5 slots). Test 2: POST /api/bookings with preferred_time='10:00 - 12:00' returns 201 with preferred_time in response. Test 3: GET /api/availability after booking shows '10:00 - 12:00' in taken, removed from available. Test 4: Admin login successful. Test 5: GET /api/bookings shows Time Test booking with preferred_time='10:00 - 12:00'. Test 6: PATCH status=cancelled works (200). Test 7: After cancellation, slot '10:00 - 12:00' freed and available again (cancelled bookings correctly excluded from taken). Test 8: DELETE booking cleanup successful (204)."
+
+test_plan:
+  current_focus: []
+  stuck_tasks: []
+  test_all: false
+  test_priority: "high_first"
+
+agent_communication:
+    -agent: "main"
+    -message: "Added booking day+time selection. Please retest backend: (1) GET /api/availability?date=2026-10-20 returns slots list, taken=[], available=all initially. (2) POST /api/bookings with preferred_time='10:00 - 12:00' saves and returns it (201). (3) After that booking, GET /api/availability for the SAME date must list '10:00 - 12:00' in 'taken' and NOT in 'available'. (4) Cancelled bookings must free their slot (PATCH status=cancelled then availability shows it available again). Use admin admin.actqbncc@gmail.com / mlpmlp652 for protected ops. Avoid wrong-password spam on admin (lockout)."
+    -agent: "testing"
+    -message: "✅ TIME SLOT FEATURE FULLY FUNCTIONAL (8/8 tests passed - 100% success rate). All requirements verified: (1) GET /api/availability returns correct structure with 5 slots, taken list, and available list. (2) POST /api/bookings with preferred_time saves and returns the time slot correctly. (3) Booked slots correctly appear in 'taken' and are removed from 'available'. (4) Admin authentication and booking retrieval working - Time Test booking found with preferred_time populated. (5) Cancellation correctly frees slots - cancelled bookings excluded from 'taken' and slot returns to 'available'. (6) Cleanup successful. Feature is production-ready."

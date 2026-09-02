@@ -3,7 +3,7 @@ import axios from "axios";
 import { toast } from "sonner";
 import {
   Loader2, LogOut, Trash2, Check, CheckCheck, Ban,
-  Mail, Phone, CalendarDays, Droplets, MessageSquare,
+  Mail, Phone, CalendarDays, Droplets, MessageSquare, RefreshCw,
 } from "lucide-react";
 
 const API = `${process.env.REACT_APP_BACKEND_URL}/api`;
@@ -191,13 +191,23 @@ const AdminPage = () => {
             <h1 className="font-display font-black text-3xl metallic-text tracking-tight">Booking Dashboard</h1>
             <p data-testid="admin-user-label" className="text-sm text-[#94A3B8] mt-2">Signed in as {auth.email}</p>
           </div>
-          <button
-            data-testid="admin-logout-button"
-            onClick={handleLogout}
-            className="rounded-full px-6 py-2.5 text-xs font-bold tracking-widest uppercase border border-[#4CC9F0]/50 text-[#4CC9F0] hover:bg-[#4CC9F0]/10 transition-colors duration-300 inline-flex items-center gap-2"
-          >
-            <LogOut className="w-4 h-4" /> Sign Out
-          </button>
+          <div className="flex items-center gap-3">
+            <button
+              data-testid="admin-refresh-button"
+              onClick={loadBookings}
+              disabled={loadingBookings}
+              className="rounded-full px-6 py-2.5 text-xs font-bold tracking-widest uppercase border border-[#4CC9F0]/50 text-[#4CC9F0] hover:bg-[#4CC9F0]/10 transition-colors duration-300 inline-flex items-center gap-2 disabled:opacity-50"
+            >
+              <RefreshCw className={`w-4 h-4 ${loadingBookings ? "animate-spin" : ""}`} /> Refresh
+            </button>
+            <button
+              data-testid="admin-logout-button"
+              onClick={handleLogout}
+              className="rounded-full px-6 py-2.5 text-xs font-bold tracking-widest uppercase border border-white/20 text-[#94A3B8] hover:bg-white/5 transition-colors duration-300 inline-flex items-center gap-2"
+            >
+              <LogOut className="w-4 h-4" /> Sign Out
+            </button>
+          </div>
         </div>
 
         <div className="grid grid-cols-3 gap-4 mb-10 max-w-lg">
@@ -235,7 +245,7 @@ const AdminPage = () => {
                 <div className="space-y-2.5 text-sm text-[#94A3B8] mb-6">
                   <p className="flex items-center gap-2.5"><Phone className="w-4 h-4 text-[#4CC9F0]" /> {b.phone}</p>
                   <p className="flex items-center gap-2.5"><Mail className="w-4 h-4 text-[#4CC9F0]" /> {b.email}</p>
-                  <p className="flex items-center gap-2.5"><CalendarDays className="w-4 h-4 text-[#4CC9F0]" /> {b.preferred_date || "No date specified"}</p>
+                  <p className="flex items-center gap-2.5"><CalendarDays className="w-4 h-4 text-[#4CC9F0]" /> {b.preferred_date || "No date specified"}{b.preferred_time ? ` · ${b.preferred_time}` : ""}</p>
                   {b.message && (
                     <p className="flex items-start gap-2.5"><MessageSquare className="w-4 h-4 text-[#4CC9F0] mt-0.5" /> {b.message}</p>
                   )}
