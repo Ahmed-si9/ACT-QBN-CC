@@ -166,7 +166,7 @@ frontend:
 metadata:
   created_by: "main_agent"
   version: "1.0"
-  test_sequence: 6
+  test_sequence: 7
   run_ui: false
 
 test_plan:
@@ -413,3 +413,53 @@ agent_communication:
 agent_communication:
     -agent: "testing"
     -message: "Payment feature PASSED 5/5. Method toggle changes submit label; Pay on Completion books and shows Unpaid + method in admin; Pay Online with positive quote redirects to checkout.stripe.com; $0 online blocked with helpful error; /payment/cancel page renders. Backend payments 8/8 earlier."
+
+## FEATURE: gallery management (admin upload/delete) + live public gallery
+backend:
+  - task: "Gallery CRUD (upload/list/image/delete) + seed"
+    implemented: true
+    working: true
+    file: "backend/server.py"
+    stuck_count: 0
+    priority: "high"
+    needs_retesting: false
+    status_history:
+        -working: "NA"
+        -agent: "main"
+        -comment: "gallery collection seeded with 6 items. GET /api/gallery (public) lists items with url. GET /api/gallery/{id}/image serves stored bytes. POST /api/gallery (admin, multipart file+label+tag) stores base64 (<=10MB, image types) returns metadata. DELETE /api/gallery/{id} (admin) removes. Verified list via curl."
+        -working: true
+        -agent: "testing"
+        -comment: "✅ PASSED (8/8 - 100% success rate) - All gallery management endpoints working correctly. TEST 1: GET /api/gallery (public, no auth) returns 200 with 6 seeded items, each with id/url/label/tag/created_at, all seeded items have unsplash URLs ✅. TEST 2: POST /api/gallery without Authorization header correctly rejected with 401 ✅. TEST 3: POST /api/gallery with admin token (multipart PNG, label='Test Upload', tag='After Deep Clean') returns 201 with id, label, tag, and url='/api/gallery/{id}/image' ✅. TEST 4: GET /api/gallery/{id}/image returns 200 with Content-Type: image/png and 69 bytes body ✅. TEST 5: GET /api/gallery includes the newly uploaded item ✅. TEST 6: POST /api/gallery with non-image file (text/plain) correctly rejected with 400 'Unsupported image type' ✅. TEST 7: DELETE /api/gallery/{id} without token correctly rejected with 401 ✅. TEST 8: DELETE /api/gallery/{id} with token returns 204, item verified gone from list, DELETE nonexistent id returns 404 ✅. All authentication, authorization, validation, and CRUD operations working as expected."
+frontend:
+  - task: "Public gallery from backend + admin Gallery tab (upload/delete)"
+    implemented: true
+    working: true
+    file: "frontend/src/components/Gallery.jsx, pages/AdminPage.jsx"
+    stuck_count: 0
+    priority: "high"
+    needs_retesting: false
+    status_history:
+        -working: "NA"
+        -agent: "main"
+        -comment: "Public Gallery fetches /api/gallery and renders. Admin has Bookings|Gallery tabs; Gallery tab uploads via file input (multipart) with optional label/tag, shows grid with delete buttons. New uploads appear on public gallery immediately; deletes remove instantly."
+        -working: true
+        -agent: "testing"
+        -comment: "✅ PASSED (ALL REQUIREMENTS MET - 100% success rate). TEST A - PUBLIC GALLERY: 6 seeded images load from backend (GET /api/gallery), all images render correctly with visible src URLs (unsplash images). Gallery section (data-testid='gallery-section') found and scrollable. TEST B - ADMIN GALLERY TAB: Admin login successful with credentials admin.actqbncc@gmail.com / mlpmlp652. Both tabs (Bookings and Gallery) visible and functional. Gallery manager (data-testid='admin-gallery-manager') appears with all upload controls: label input (gallery-upload-label), tag input (gallery-upload-tag), upload button (gallery-upload-button), and hidden file input (gallery-file-input). Admin gallery shows 6 existing images with 6 delete buttons. TEST C - UPLOAD NEW IMAGE: Successfully uploaded 'Playwright Test Photo' with label and tag 'QA Upload'. POST /api/gallery returned 201 Created. Success toast 'Image uploaded.' appeared. New image card appeared in admin gallery (count increased from 6 to 7). Image found with correct label and ID (713e3b83-0a3f-4b59-b59e-292ccf40fcd4). No console errors during upload. TEST D - LIVE UPDATE ON PUBLIC SITE: Public gallery immediately reflects upload - count increased from 6 to 7. 'Playwright Test Photo' found in public gallery at position 7 with correct label, tag 'QA Upload', and image rendering correctly (src: /api/gallery/{id}/image). TEST E - DELETE IMAGE (CLEANUP): Delete button (gallery-delete-{id}) visible and functional. Clicked delete, success toast 'Image deleted.' appeared. Image card disappeared from admin grid (count returned to 6). Public gallery reloaded - deleted image no longer appears, count back to 6. IMPORTANT: Only deleted the test image - all 6 seeded images remain intact. TEST F - BOOKINGS TAB: Switched back to Bookings tab successfully. Export CSV and Refresh buttons visible and functional. Non-critical: 6 Cloudflare RUM monitoring requests failed (analytics only, does not affect functionality). All critical validations passed."
+
+test_plan:
+  current_focus: []
+  stuck_tasks: []
+  test_all: false
+  test_priority: "high_first"
+
+agent_communication:
+    -agent: "main"
+    -message: "Retest backend gallery: (1) GET /api/gallery returns >=6 items each with id/url/label/tag. (2) Upload requires auth: POST /api/gallery WITHOUT token -> 401. (3) With admin token, POST /api/gallery multipart with a small PNG file + label + tag -> 201 returning url '/api/gallery/{id}/image'. (4) GET that image url -> 200 image bytes with image content-type. (5) GET /api/gallery now includes the new item. (6) DELETE /api/gallery/{id} with token -> 204; without token -> 401; unknown id -> 404. (7) invalid type (e.g. text file) -> 400. Admin creds admin.actqbncc@gmail.com/mlpmlp652."
+    -agent: "testing"
+    -message: "✅ GALLERY BACKEND TESTS PASSED (8/8 - 100% success rate). All gallery management endpoints working correctly: (1) GET /api/gallery (public) returns 200 with 6 seeded items, all with required fields (id/url/label/tag/created_at) and unsplash URLs. (2) POST /api/gallery without auth correctly rejected with 401. (3) POST /api/gallery with admin token (multipart PNG + label + tag) returns 201 with correct response structure (id, label='Test Upload', tag='After Deep Clean', url='/api/gallery/{id}/image'). (4) GET /api/gallery/{id}/image returns 200 with Content-Type: image/png and image bytes. (5) Newly uploaded item appears in GET /api/gallery list. (6) POST /api/gallery with non-image file (text/plain) correctly rejected with 400 'Unsupported image type'. (7) DELETE /api/gallery/{id} without token correctly rejected with 401. (8) DELETE /api/gallery/{id} with token returns 204, item verified gone from list, DELETE nonexistent id returns 404. All authentication, authorization, validation, and CRUD operations working as expected. Backend gallery feature is production-ready."
+    -agent: "testing"
+    -message: "✅ GALLERY FRONTEND TESTS PASSED (ALL 6 TEST SUITES - 100% success rate). Tested all requirements from review_request: (A) Public gallery loads 6 seeded images from backend, all render correctly. (B) Admin login successful, both Bookings and Gallery tabs visible, gallery manager appears with all upload controls (label input, tag input, upload button, file input). Admin gallery shows 6 existing images with delete buttons. (C) Upload 'Playwright Test Photo' successful - POST /api/gallery returned 201, success toast appeared, new image card appeared in admin grid with correct label. (D) Live update verified - newly uploaded image immediately appears on public gallery (count 6→7), image renders correctly. (E) Delete successful - delete button clicked, success toast appeared, image disappeared from both admin and public gallery (count 7→6), seeded images intact. (F) Bookings tab still functional - Export CSV and Refresh buttons visible. Non-critical: 6 Cloudflare RUM monitoring requests failed (analytics only, does not affect functionality). Gallery management feature is production-ready."
+
+agent_communication:
+    -agent: "testing"
+    -message: "Gallery management PASSED. Public gallery renders 6 seeded images from backend. Admin Gallery tab uploads (201, appears in admin + public instantly), deletes (removed from both), seeded images preserved. Bookings tab still works. Only non-critical Cloudflare RUM analytics failed."

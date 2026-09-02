@@ -4,11 +4,13 @@ from pathlib import Path
 ROOT_DIR = Path(__file__).parent
 load_dotenv(ROOT_DIR / '.env')
 
-from fastapi import FastAPI, APIRouter, HTTPException, Request, Response, Depends
+from fastapi import FastAPI, APIRouter, HTTPException, Request, Response, Depends, UploadFile, File, Form
+from fastapi.responses import Response as FastAPIResponse
 from starlette.middleware.cors import CORSMiddleware
 from motor.motor_asyncio import AsyncIOMotorClient
 import os
 import re
+import base64
 import ipaddress
 import logging
 import uuid
@@ -206,6 +208,7 @@ async def seed_admin():
 @app.on_event("startup")
 async def startup():
     await seed_admin()
+    await seed_gallery()
     await db.users.create_index("email", unique=True)
     await db.login_attempts.create_index("identifier")
 
@@ -540,6 +543,98 @@ async def stripe_webhook(request: Request):
     elif t == "checkout.session.async_payment_succeeded":
         await _mark_paid(obj["id"], (obj.get("metadata") or {}).get("booking_id"))
     return {"status": "ok"}
+
+
+# --- Gallery routes ---
+_SEED_GALLERY = [
+    {"external_url": "https://images.unsplash.com/photo-1528740561666-dc2479dc08ab?w=800&q=80", "label": "Lounge Carpet Revival", "tag": "After Steam Extraction"},
+    {"external_url": "https://images.unsplash.com/photo-1581578731548-c64695cc6952?w=800&q=80", "label": "Deep Steam Pass", "tag": "In Progress"},
+    {"external_url": "https://images.unsplash.com/photo-1584820927498-cfe5211fd8bf?w=800&q=80", "label": "Eco-Safe Treatment", "tag": "Stain Removal"},
+    {"external_url": "https://images.unsplash.com/photo-1563453392212-326f5e854473?w=800&q=80", "label": "Detail Finish Work", "tag": "End of Lease"},
+    {"external_url": "https://images.unsplash.com/photo-1556911220-bff31c812dba?w=800&q=80", "label": "Family Room Reset", "tag": "After Deep Clean"},
+    {"external_url": "https://images.unsplash.com/photo-1603712725038-e9334ae8f39f?w=800&q=80", "label": "Showroom Result", "tag": "Carpet Protection Applied"},
+]
+
+_ALLOWED_IMG = {"image/jpeg", "image/png", "image/webp", "image/gif"}
+_MAX_IMG_BYTES = 10 * 1024 * 1024  # 10MB
+
+
+async def seed_gallery():
+    if await db.gallery.count_documents({}) == 0:
+        now = datetime.now(timezone.utc)
+        docs = []
+        for i, item in enumerate(_SEED_GALLERY):
+            docs.append({
+                "id": str(uuid.uuid4()),
+                "label": item["label"],
+                "tag": item["tag"],
+                "external_url": item["external_url"],
+                "created_at": (now + timedelta(seconds=i)).isoformat(),
+            })
+        if docs:
+            await db.gallery.insert_many(docs)
+
+
+def _gallery_public(doc: dict) -> dict:
+    return {
+        "id": doc["id"],
+        "label": doc.get("label") or "",
+        "tag": doc.get("tag") or "",
+        "url": doc["external_url"] if doc.get("external_url") else f"/api/gallery/{doc['id']}/image",
+        "created_at": doc.get("created_at"),
+    }
+
+
+@api_router.get("/gallery")
+async def list_gallery():
+    docs = await db.gallery.find({}, {"_id": 0, "data": 0}).sort("created_at", 1).to_list(500)
+    return [_gallery_public(d) for d in docs]
+
+
+@api_router.get("/gallery/{image_id}/image")
+async def get_gallery_image(image_id: str):
+    doc = await db.gallery.find_one({"id": image_id}, {"_id": 0})
+    if not doc or not doc.get("data"):
+        raise HTTPException(status_code=404, detail="Image not found")
+    raw = base64.b64decode(doc["data"])
+    return FastAPIResponse(
+        content=raw,
+        media_type=doc.get("content_type", "image/jpeg"),
+        headers={"Cache-Control": "public, max-age=86400"},
+    )
+
+
+@api_router.post("/gallery", status_code=201)
+async def upload_gallery_image(
+    file: UploadFile = File(...),
+    label: str = Form(""),
+    tag: str = Form(""),
+    user: dict = Depends(get_current_user),
+):
+    if file.content_type not in _ALLOWED_IMG:
+        raise HTTPException(status_code=400, detail="Unsupported image type. Use JPG, PNG, WEBP or GIF.")
+    raw = await file.read()
+    if len(raw) > _MAX_IMG_BYTES:
+        raise HTTPException(status_code=400, detail="Image too large (max 10MB).")
+    if not raw:
+        raise HTTPException(status_code=400, detail="Empty file.")
+    doc = {
+        "id": str(uuid.uuid4()),
+        "label": label.strip() or file.filename or "Gallery image",
+        "tag": tag.strip() or "Our Work",
+        "content_type": file.content_type,
+        "data": base64.b64encode(raw).decode("utf-8"),
+        "created_at": datetime.now(timezone.utc).isoformat(),
+    }
+    await db.gallery.insert_one(doc)
+    return _gallery_public(doc)
+
+
+@api_router.delete("/gallery/{image_id}", status_code=204)
+async def delete_gallery_image(image_id: str, user: dict = Depends(get_current_user)):
+    result = await db.gallery.delete_one({"id": image_id})
+    if result.deleted_count == 0:
+        raise HTTPException(status_code=404, detail="Image not found")
 
 
 app.include_router(api_router)
