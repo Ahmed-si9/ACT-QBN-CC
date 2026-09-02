@@ -215,6 +215,8 @@ class Booking(BaseModel):
     service: str
     preferred_date: Optional[str] = None
     preferred_time: Optional[str] = None
+    quote_summary: Optional[str] = None
+    quote_total: Optional[float] = None
     message: Optional[str] = None
     status: str = "new"
     created_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
@@ -227,6 +229,8 @@ class BookingCreate(BaseModel):
     service: str
     preferred_date: Optional[str] = None
     preferred_time: Optional[str] = None
+    quote_summary: Optional[str] = None
+    quote_total: Optional[float] = None
     message: Optional[str] = None
 
 
@@ -351,6 +355,8 @@ async def create_booking(input: BookingCreate):
         + row("Service", escape(booking.service))
         + row("Preferred Date", escape(booking.preferred_date or "Not specified"))
         + row("Preferred Time", escape(booking.preferred_time or "Not specified"))
+        + row("Estimated Quote", escape(f"${booking.quote_total:.0f}" if booking.quote_total else "Not calculated"))
+        + row("Quote Details", escape(booking.quote_summary or "—"))
         + row("Message", escape(booking.message or "—"))
         + '</table></td></tr>'
         f'<tr><td style="padding:16px 24px;font-size:12px;color:#94a3b8;border-top:1px solid #e2e8f0">Sent by {escape(EMAIL_FROM_NAME)} booking system. Reply to this email to contact the customer directly.</td></tr>'

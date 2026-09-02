@@ -315,3 +315,51 @@ agent_communication:
 agent_communication:
     -agent: "testing"
     -message: "Frontend UI test PASSED. Pricing section shows all correct prices ($99 min callout, residential/end-of-lease/add-ons). Time slots render as button grid; blocked weekday slots (Thu 10-16, Wed before 16:00) show RED 'Fully Booked' and are disabled; available slots selectable. End-to-end booking on available slot works and appears in admin with date+time. Submit-without-time blocked. Only non-critical Cloudflare RUM analytics failed."
+
+## FEATURE: quote calculator + attach to booking + CSV export
+backend:
+  - task: "Booking quote fields (quote_summary, quote_total)"
+    implemented: true
+    working: true
+    file: "backend/server.py"
+    stuck_count: 0
+    priority: "medium"
+    needs_retesting: false
+    status_history:
+        -working: "NA"
+        -agent: "main"
+        -comment: "Added optional quote_summary (str) and quote_total (float) to Booking/BookingCreate; included in email + returned in list. Verified via curl that they save/return."
+        -working: true
+        -agent: "testing"
+        -comment: "✅ PASSED - Quote fields working correctly. POST /api/bookings with quote_summary and quote_total (285.0) returns 201 and includes both fields in response. Quote data correctly saved and retrieved via GET /api/bookings. Admin dashboard displays quote with 'Est. $285' and full summary '3BR + Lounge package $210; 1 extra room $45; Pet stain & odour (per room) x1 $30 — Est. total $285'."
+frontend:
+  - task: "Instant quote calculator + attach to booking + admin CSV export"
+    implemented: true
+    working: true
+    file: "frontend/src/components/QuoteCalculator.jsx, Contact.jsx, pages/AdminPage.jsx"
+    stuck_count: 0
+    priority: "high"
+    needs_retesting: false
+    status_history:
+        -working: "NA"
+        -agent: "main"
+        -comment: "QuoteCalculator with steppers (package, extra rooms, residential items, add-ons) computes live total with $99 min call-out floor; quote attached to booking POST. Admin card shows Est. $total + summary. Admin Export CSV button downloads all bookings incl. quote."
+        -working: true
+        -agent: "testing"
+        -comment: "✅ PASSED (ALL 3 FEATURES - 100% success rate). TEST A - Quote Calculator: Initial total $0 ✅, mattressDouble +1 → $100 ✅, mattressSingle +1 → $170 ✅, $99 minimum floor with hallway (note visible) ✅, 2BR package + extra room → $205 ✅. All steppers (residential: hallway/stairs/upholstery, add-ons: addonRoom/petTreatment/deodorising/rug/mattressSingle/mattressDouble, package select with extra rooms) working correctly with live total updates. TEST B - Quote Attached to Booking: Booking submitted with 3BR package ($210) + extra room ($45) + pet treatment ($30) = $285 ✅, POST /api/bookings includes quote_total and quote_summary ✅, admin login successful ✅, 'Quote Customer' booking visible in admin dashboard with 'Est. $285' and full quote summary mentioning 3BR package and pet treatment ✅, date '2026-12-18 · 08:00 - 10:00' displayed correctly ✅. TEST C - CSV Export: Export button clicked ✅, CSV download triggered (actqbn-bookings-2026-09-02.csv) ✅, success toast 'Exported 1 booking to CSV.' appeared ✅, no console errors ✅. Cleanup: Booking deleted ✅, sign out successful ✅. Non-critical: 1 Cloudflare RUM monitoring request failed (does not affect functionality)."
+
+test_plan:
+  current_focus: []
+  stuck_tasks: []
+  test_all: false
+  test_priority: "high_first"
+
+agent_communication:
+    -agent: "main"
+    -message: "Please run frontend UI test for quote calculator (steppers update total, $99 min floor), booking attaches quote and it shows in /admin card, and Export CSV button triggers a download. See detailed steps in the test call."
+    -agent: "testing"
+    -message: "✅ QUOTE CALCULATOR + CSV EXPORT FEATURE FULLY FUNCTIONAL (ALL TESTS PASSED - 100% success rate). Tested all three enhancements: (A) Instant quote calculator with live total updates, all steppers working (residential items, add-ons, packages with extra rooms), $99 minimum call-out floor correctly enforced with visible note. (B) Quote attached to booking - POST /api/bookings includes quote_total and quote_summary, booking appears in admin dashboard with 'Est. $285' and full quote details (3BR package + extra room + pet treatment), date and time displayed correctly. (C) CSV export button triggers download (actqbn-bookings-YYYY-MM-DD.csv format), success toast appears, no errors. Cleanup successful (booking deleted, sign out working). Only non-critical issue: 1 Cloudflare RUM monitoring request failed (does not affect functionality). Feature is production-ready."
+
+agent_communication:
+    -agent: "testing"
+    -message: "Quote calculator + attach + CSV export PASSED. Calculator total updates live with steppers, $99 minimum floor enforced. Booking attaches quote_total+quote_summary; admin card shows 'Est. $N' + summary + date/time. Export CSV downloads actqbn-bookings-YYYY-MM-DD.csv with success toast. Only non-critical Cloudflare RUM analytics failed."

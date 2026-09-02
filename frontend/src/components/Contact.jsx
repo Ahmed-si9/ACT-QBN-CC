@@ -1,8 +1,9 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, useRef, useCallback } from "react";
 import { motion } from "framer-motion";
 import { Mail, Phone, MapPin, Send, Loader2 } from "lucide-react";
 import { toast } from "sonner";
 import axios from "axios";
+import QuoteCalculator from "@/components/QuoteCalculator";
 
 const API = `${process.env.REACT_APP_BACKEND_URL}/api`;
 
@@ -32,6 +33,11 @@ const Contact = () => {
   const [slots, setSlots] = useState([]);
   const [takenSlots, setTakenSlots] = useState([]);
   const [loadingSlots, setLoadingSlots] = useState(false);
+  const quoteRef = useRef({ quote_summary: null, quote_total: null });
+
+  const handleQuoteChange = useCallback((q) => {
+    quoteRef.current = q;
+  }, []);
 
   const today = new Date().toISOString().split("T")[0];
 
@@ -79,7 +85,7 @@ const Contact = () => {
     }
     setSubmitting(true);
     try {
-      await axios.post(`${API}/bookings`, form);
+      await axios.post(`${API}/bookings`, { ...form, ...quoteRef.current });
       toast.success("Booking request received! We'll confirm your clean shortly.");
       setForm({
         name: "",
@@ -307,6 +313,8 @@ const Contact = () => {
               onChange={update("message")}
               className="glow-input rounded-xl px-5 py-3.5 text-sm w-full resize-none"
             />
+
+            <QuoteCalculator onChange={handleQuoteChange} />
 
             <button
               data-testid="booking-submit-button"

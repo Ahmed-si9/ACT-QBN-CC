@@ -3,7 +3,7 @@ import axios from "axios";
 import { toast } from "sonner";
 import {
   Loader2, LogOut, Trash2, Check, CheckCheck, Ban,
-  Mail, Phone, CalendarDays, Droplets, MessageSquare, RefreshCw,
+  Mail, Phone, CalendarDays, Droplets, MessageSquare, RefreshCw, Download, DollarSign,
 } from "lucide-react";
 
 const API = `${process.env.REACT_APP_BACKEND_URL}/api`;
@@ -111,6 +111,31 @@ const AdminPage = () => {
     }
   };
 
+  const exportCSV = () => {
+    if (!bookings.length) {
+      toast.error("No bookings to export.");
+      return;
+    }
+    const headers = ["Name", "Phone", "Email", "Service", "Date", "Time", "Est. Total", "Quote Details", "Message", "Status", "Created At"];
+    const esc = (v) => `"${String(v ?? "").replace(/"/g, '""')}"`;
+    const rows = bookings.map((b) => [
+      b.name, b.phone, b.email, b.service, b.preferred_date || "", b.preferred_time || "",
+      b.quote_total != null ? `$${b.quote_total}` : "", b.quote_summary || "", b.message || "",
+      b.status, b.created_at ? new Date(b.created_at).toLocaleString() : "",
+    ].map(esc).join(","));
+    const csv = "\uFEFF" + [headers.map(esc).join(","), ...rows].join("\r\n");
+    const blob = new Blob([csv], { type: "text/csv;charset=utf-8;" });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = `actqbn-bookings-${new Date().toISOString().split("T")[0]}.csv`;
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+    URL.revokeObjectURL(url);
+    toast.success(`Exported ${bookings.length} booking${bookings.length > 1 ? "s" : ""} to CSV.`);
+  };
+
   if (auth === null) {
     return (
       <div data-testid="admin-loading" className="min-h-screen bg-[#0B1320] flex items-center justify-center">
@@ -193,6 +218,13 @@ const AdminPage = () => {
           </div>
           <div className="flex items-center gap-3">
             <button
+              data-testid="admin-export-button"
+              onClick={exportCSV}
+              className="rounded-full px-6 py-2.5 text-xs font-bold tracking-widest uppercase border border-emerald-300/50 text-emerald-300 hover:bg-emerald-300/10 transition-colors duration-300 inline-flex items-center gap-2"
+            >
+              <Download className="w-4 h-4" /> Export CSV
+            </button>
+            <button
               data-testid="admin-refresh-button"
               onClick={loadBookings}
               disabled={loadingBookings}
@@ -246,6 +278,15 @@ const AdminPage = () => {
                   <p className="flex items-center gap-2.5"><Phone className="w-4 h-4 text-[#4CC9F0]" /> {b.phone}</p>
                   <p className="flex items-center gap-2.5"><Mail className="w-4 h-4 text-[#4CC9F0]" /> {b.email}</p>
                   <p className="flex items-center gap-2.5"><CalendarDays className="w-4 h-4 text-[#4CC9F0]" /> {b.preferred_date || "No date specified"}{b.preferred_time ? ` · ${b.preferred_time}` : ""}</p>
+                  {b.quote_total != null && (
+                    <p data-testid={`booking-quote-${b.id}`} className="flex items-start gap-2.5">
+                      <DollarSign className="w-4 h-4 text-emerald-300 mt-0.5" />
+                      <span>
+                        <span className="font-display font-bold text-emerald-300">Est. ${b.quote_total}</span>
+                        {b.quote_summary ? <span className="block text-xs text-[#94A3B8] mt-0.5">{b.quote_summary}</span> : null}
+                      </span>
+                    </p>
+                  )}
                   {b.message && (
                     <p className="flex items-start gap-2.5"><MessageSquare className="w-4 h-4 text-[#4CC9F0] mt-0.5" /> {b.message}</p>
                   )}
