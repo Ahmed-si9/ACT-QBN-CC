@@ -259,27 +259,79 @@ TIME_SLOTS = [
     "16:00 - 18:00",
 ]
 
+# Start/end hour of each slot (24h).
+_SLOT_HOURS = {
+    "08:00 - 10:00": (8, 10),
+    "10:00 - 12:00": (10, 12),
+    "12:00 - 14:00": (12, 14),
+    "14:00 - 16:00": (14, 16),
+    "16:00 - 18:00": (16, 18),
+}
+
+# Recurring business-blocked windows by weekday (Mon=0 .. Sun=6).
+# A slot is blocked if it overlaps any window. Fri/Sat/Sun fully open.
+_BLOCKED_WINDOWS = {
+    0: [(10, 14)],   # Monday    10:00-14:00
+    1: [(10, 17)],   # Tuesday   10:00-17:00
+    2: [(0, 16)],    # Wednesday before 16:00 (only after 4pm open)
+    3: [(10, 16)],   # Thursday  10:00-16:00
+}
+
+
+def _blocked_slots_for_date(date_str: str) -> list:
+    """Slots blocked by recurring business rules for the given ISO date."""
+    from datetime import date as _date
+    try:
+        wd = _date.fromisoformat(date_str).weekday()
+    except (ValueError, TypeError):
+        return []
+    windows = _BLOCKED_WINDOWS.get(wd, [])
+    blocked = []
+    for slot in TIME_SLOTS:
+        s, e = _SLOT_HOURS[slot]
+        if any(s < we and e > ws for ws, we in windows):
+            blocked.append(slot)
+    return blocked
+
 
 @api_router.get("/availability")
 async def availability(date: str):
-    """Public: returns the configured slots and which are already taken for a date.
-    Only booked time strings are exposed (no customer data)."""
+    """Public: returns slots and which are unavailable for a date.
+    Unavailable = recurring business-blocked slots + slots already booked.
+    No customer data is exposed."""
+    blocked = _blocked_slots_for_date(date)
     taken_docs = await db.bookings.find(
         {"preferred_date": date, "status": {"$ne": "cancelled"}},
         {"_id": 0, "preferred_time": 1},
     ).to_list(500)
-    taken = [d["preferred_time"] for d in taken_docs if d.get("preferred_time")]
+    booked = [d["preferred_time"] for d in taken_docs if d.get("preferred_time")]
+    unavailable = [s for s in TIME_SLOTS if s in blocked or s in booked]
     return {
         "date": date,
         "slots": TIME_SLOTS,
-        "taken": taken,
-        "available": [s for s in TIME_SLOTS if s not in taken],
+        "taken": unavailable,      # all unavailable (shown as "Fully Booked")
+        "blocked": blocked,        # blocked by business rule
+        "booked": booked,          # taken by real bookings
+        "available": [s for s in TIME_SLOTS if s not in unavailable],
     }
 
 
 @api_router.post("/bookings", response_model=Booking, status_code=201)
 async def create_booking(input: BookingCreate):
     booking = Booking(**input.model_dump())
+
+    # Guard: never accept a time slot that is blocked or already booked.
+    if booking.preferred_date and booking.preferred_time:
+        if booking.preferred_time in _blocked_slots_for_date(booking.preferred_date):
+            raise HTTPException(status_code=400, detail="That time slot is fully booked. Please choose another.")
+        clash = await db.bookings.find_one({
+            "preferred_date": booking.preferred_date,
+            "preferred_time": booking.preferred_time,
+            "status": {"$ne": "cancelled"},
+        })
+        if clash:
+            raise HTTPException(status_code=400, detail="That time slot was just booked. Please choose another.")
+
     doc = booking.model_dump()
     doc['created_at'] = doc['created_at'].isoformat()
     await db.bookings.insert_one(doc)

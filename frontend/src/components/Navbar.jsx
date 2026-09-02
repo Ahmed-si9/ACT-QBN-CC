@@ -4,6 +4,7 @@ import { Menu, X, Droplets } from "lucide-react";
 const links = [
   { label: "Home", href: "#home", testid: "nav-home-link" },
   { label: "Services", href: "#services", testid: "nav-services-link" },
+  { label: "Pricing", href: "#pricing", testid: "nav-pricing-link" },
   { label: "Gallery", href: "#gallery", testid: "nav-gallery-link" },
   { label: "Reviews", href: "#reviews", testid: "nav-reviews-link" },
   { label: "Contact", href: "#contact", testid: "nav-contact-link" },

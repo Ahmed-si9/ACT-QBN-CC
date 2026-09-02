@@ -4,6 +4,7 @@ import { Toaster } from "@/components/ui/sonner";
 import Navbar from "@/components/Navbar";
 import Hero from "@/components/Hero";
 import Services from "@/components/Services";
+import Pricing from "@/components/Pricing";
 import Gallery from "@/components/Gallery";
 import Reviews from "@/components/Reviews";
 import Contact from "@/components/Contact";
@@ -15,6 +16,7 @@ const Landing = () => (
     <Navbar />
     <Hero />
     <Services />
+    <Pricing />
     <Gallery />
     <Reviews />
     <Contact />

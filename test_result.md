@@ -166,7 +166,7 @@ frontend:
 metadata:
   created_by: "main_agent"
   version: "1.0"
-  test_sequence: 3
+  test_sequence: 5
   run_ui: false
 
 test_plan:
@@ -263,3 +263,55 @@ agent_communication:
 agent_communication:
     -agent: "testing"
     -message: "FULL e2e frontend test PASSED 6/6 (100%). Navigation, booking form day+time with availability, submit-without-time blocked, booked slot becomes unavailable, admin login, booking appears with time, refresh button, and confirm/complete/delete/logout all verified working. Only non-critical Cloudflare RUM analytics requests failed (irrelevant)."
+
+## FEATURE: weekday availability rules + pricing section
+backend:
+  - task: "Weekday business-blocked slots + booking guard"
+    implemented: true
+    working: true
+    file: "backend/server.py"
+    stuck_count: 0
+    priority: "high"
+    needs_retesting: false
+    status_history:
+        -working: "NA"
+        -agent: "main"
+        -comment: "GET /api/availability now blocks recurring slots by weekday: Mon 10-14, Tue 10-17, Wed before 16:00, Thu 10-16; Fri/Sat/Sun fully open. Response adds blocked/booked arrays; 'taken' = union (blocked+booked). POST /api/bookings rejects (400) a blocked slot or an already-booked slot. Verified weekday logic via curl."
+        -working: true
+        -agent: "testing"
+        -comment: "✅ PASSED (13/13 - 100% success rate) - Weekday availability and booking guard fully functional. PART 1 - Weekday rules verified for all 7 days: Monday blocked ['10:00-12:00','12:00-14:00'], Tuesday blocked ['10:00-12:00','12:00-14:00','14:00-16:00','16:00-18:00'] (only 08:00-10:00 available), Wednesday blocked ['08:00-10:00','10:00-12:00','12:00-14:00','14:00-16:00'] (only 16:00-18:00 available), Thursday blocked ['10:00-12:00','12:00-14:00','14:00-16:00'], Friday/Saturday/Sunday fully open (blocked=[]). All 'slots', 'taken', 'blocked', 'booked', 'available' arrays correct. PART 2 - Booking guards working: (1) Blocked slot rejected - Thursday 12:00-14:00 correctly rejected with 400 'That time slot is fully booked'. (2) Available slot succeeds - Friday 10:00-12:00 booking created (201). (3) Double-book guard - same Friday slot correctly rejected with 400 'That time slot was just booked'. (4) Availability reflects booking - Friday 10:00-12:00 now in 'taken' and NOT in 'available'. PART 3 - Cleanup successful - admin login and test booking deletion (204) working."
+frontend:
+  - task: "Pricing section + red Fully Booked time slots"
+    implemented: true
+    working: true
+    file: "frontend/src/components/Pricing.jsx, Contact.jsx, Navbar.jsx, App.js"
+    stuck_count: 0
+    priority: "high"
+    needs_retesting: false
+    status_history:
+        -working: "NA"
+        -agent: "main"
+        -comment: "Added Pricing section (min $99 callout, residential, end-of-lease packages, add-ons) + nav link. Booking time picker is now a button grid; unavailable slots render RED with 'Fully Booked' and are disabled."
+        -working: true
+        -agent: "testing"
+        -comment: "✅ PASSED (ALL REQUIREMENTS MET - 100% success). TEST A - PRICING SECTION: Navbar PRICING link working, scrolls to pricing section correctly. Heading 'Clear, Upfront Rates' verified. Minimum call-out fee callout shows '$99' correctly. All three pricing cards present with correct data-testids (pricing-card-residential, pricing-card-end-of-lease, pricing-card-add-ons). Standard Residential: Hallway $15, Stairs $30, Upholstery $25 verified. End of Lease Packages: 1BR $130, 2BR $160, 3BR $210, 4BR $260, Additional Room $45 verified. Add-On Services: Pet Stain +$30/room, Deodorising +$15/room, Rug Cleaning From $60, Mattress Single $70, Mattress Double/Queen/King $100 verified. 'Get an Exact Quote' button with href='#contact' working. TEST B - TIME SLOTS: Thursday 2026-12-10 shows 2 of 5 slots available (08:00-10:00, 16:00-18:00 available; 10:00-12:00, 12:00-14:00, 14:00-16:00 RED/disabled with 'FULLY BOOKED' text). Wednesday 2026-12-09 shows 1 of 5 slots available (only 16:00-18:00 available; all others RED/disabled). Friday 2026-12-11 shows all 5 slots available. Helper text correctly displays availability count. TEST C - END-TO-END BOOKING: Liam Ford booking submitted successfully on Friday 2026-12-11 at 12:00-14:00, success toast appeared, form reset correctly. Edge case verified: submitting with date but no time correctly blocked with error toast. TEST D - ADMIN VERIFICATION: Admin login successful, Liam Ford booking appears in dashboard with all details (name, date '2026-12-11 · 12:00 - 14:00', service 'CARPET STEAM CLEANING'). Booking deleted successfully, sign out working. Minor: Services displayed in ALL CAPS in admin (styling choice, not a bug). Non-critical: 2 Cloudflare RUM monitoring requests failed (does not affect functionality)."
+
+test_plan:
+  current_focus: []
+  stuck_tasks: []
+  test_all: false
+  test_priority: "high_first"
+
+agent_communication:
+    -agent: "main"
+    -message: "Please retest backend for weekday availability + booking guard (see task). Then I'll run frontend UI test."
+    -agent: "testing"
+    -message: "✅ BACKEND WEEKDAY AVAILABILITY & BOOKING GUARD TESTS PASSED (13/13 - 100% success rate). Tested all 7 weekdays (Mon-Sun) with specific 2026 dates - all blocked/available arrays match business rules exactly. Booking guards working perfectly: blocked slots rejected (400), available slots succeed (201), double-booking prevented (400), availability correctly reflects bookings. Admin login and cleanup successful. Backend weekday feature is production-ready. Main agent can now proceed with frontend UI testing."
+    -agent: "main"
+    -message: "Added Pricing section + red Fully Booked time slots UI. Please test: (A) Pricing section with all cards and prices, (B) Time slots showing RED 'Fully Booked' for blocked weekday slots on specific dates (Thu 2026-12-10, Wed 2026-12-09, Fri 2026-12-11), (C) End-to-end booking with Liam Ford on available Friday slot, (D) Verify booking appears in admin with date+time."
+    -agent: "testing"
+    -message: "✅ PRICING SECTION + TIME SLOTS FEATURE FULLY FUNCTIONAL (ALL TESTS PASSED - 100% success rate). PART A - Pricing section: All pricing cards verified with correct prices (residential, end-of-lease packages, add-ons), minimum $99 callout, navigation link working, 'Get an Exact Quote' button functional. PART B - Time slots: Thursday 2026-12-10 correctly shows 2/5 available (3 slots RED/disabled with 'FULLY BOOKED'), Wednesday 2026-12-09 shows 1/5 available (4 slots blocked), Friday 2026-12-11 shows all 5 available. Helper text displays correct availability counts. PART C - End-to-end booking: Liam Ford booking submitted successfully on Friday 12:00-14:00, success toast appeared, form reset. Edge case verified: submit without time correctly blocked. PART D - Admin verification: Liam Ford booking appears in admin dashboard with all details including date+time '2026-12-11 · 12:00 - 14:00', booking deleted successfully, sign out working. Minor: Services displayed in ALL CAPS in admin (styling choice). Feature is production-ready."
+
+agent_communication:
+    -agent: "testing"
+    -message: "Frontend UI test PASSED. Pricing section shows all correct prices ($99 min callout, residential/end-of-lease/add-ons). Time slots render as button grid; blocked weekday slots (Thu 10-16, Wed before 16:00) show RED 'Fully Booked' and are disabled; available slots selectable. End-to-end booking on available slot works and appears in admin with date+time. Submit-without-time blocked. Only non-critical Cloudflare RUM analytics failed."

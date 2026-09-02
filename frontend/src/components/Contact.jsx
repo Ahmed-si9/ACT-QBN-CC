@@ -251,31 +251,49 @@ const Contact = () => {
             </div>
 
             <div>
-              <select
-                data-testid="booking-time-select"
-                value={form.preferred_time}
-                onChange={update("preferred_time")}
-                disabled={!form.preferred_date || loadingSlots}
-                className="glow-input rounded-xl px-5 py-3.5 text-sm w-full disabled:opacity-50 disabled:cursor-not-allowed"
-              >
-                <option value="">
-                  {!form.preferred_date
-                    ? "Select a day first"
-                    : loadingSlots
-                    ? "Checking availability..."
-                    : "Choose an available time"}
-                </option>
+              <p className="text-xs uppercase tracking-[0.25em] text-[#94A3B8] mb-3">
+                {!form.preferred_date
+                  ? "Select a day to see available times"
+                  : loadingSlots
+                  ? "Checking availability..."
+                  : "Choose an available time"}
+              </p>
+              <div data-testid="booking-time-slots" className="grid grid-cols-2 sm:grid-cols-3 gap-3">
                 {slots.map((s) => {
                   const taken = takenSlots.includes(s);
+                  const selected = form.preferred_time === s;
+                  const base =
+                    "rounded-xl px-3 py-3 text-sm font-medium border transition-colors duration-200 flex flex-col items-center justify-center gap-0.5";
+                  let cls;
+                  if (taken) {
+                    cls = "border-rose-500/50 bg-rose-500/10 text-rose-300 cursor-not-allowed";
+                  } else if (selected) {
+                    cls = "border-[#4CC9F0] bg-[#4CC9F0]/20 text-white shadow-[0_0_18px_rgba(76,201,240,0.35)]";
+                  } else {
+                    cls = "border-white/15 text-[#E0F2FE] hover:border-[#4CC9F0]/70 hover:bg-[#4CC9F0]/5";
+                  }
                   return (
-                    <option key={s} value={s} disabled={taken}>
-                      {s}{taken ? " — Booked" : ""}
-                    </option>
+                    <button
+                      key={s}
+                      type="button"
+                      data-testid={`time-slot-${s.replace(/[^0-9]/g, "")}`}
+                      disabled={taken}
+                      aria-pressed={selected}
+                      onClick={() => setForm((f) => ({ ...f, preferred_time: s }))}
+                      className={`${base} ${cls}`}
+                    >
+                      <span>{s}</span>
+                      {taken && (
+                        <span className="text-[9px] font-bold uppercase tracking-[0.15em] text-rose-400">
+                          Fully Booked
+                        </span>
+                      )}
+                    </button>
                   );
                 })}
-              </select>
+              </div>
               {form.preferred_date && !loadingSlots && slots.length > 0 && (
-                <p className="mt-2 text-xs text-[#94A3B8]">
+                <p className="mt-3 text-xs text-[#94A3B8]">
                   {slots.length - takenSlots.length} of {slots.length} time slots available on this day.
                 </p>
               )}
