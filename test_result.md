@@ -150,7 +150,7 @@ backend:
 frontend:
   - task: "Landing page + Admin dashboard clone"
     implemented: true
-    working: "NA"
+    working: true
     file: "frontend/src/App.js"
     stuck_count: 0
     priority: "high"
@@ -159,11 +159,14 @@ frontend:
         -working: "NA"
         -agent: "main"
         -comment: "Migrated all components. Screenshot confirms hero renders correctly. Fixed broken template literals in AdminPage login handler from source."
+        -working: true
+        -agent: "testing"
+        -comment: "✅ PASSED - Full end-to-end UI test completed successfully. Navigation: All navbar links, hero section (heading, button, logo), 6 service cards, 6 gallery images, 4 review cards verified. Booking submission: Form submission successful, POST /api/bookings returned 201, success toast appeared, form reset correctly. Admin login: Authentication successful with correct credentials. CRITICAL BUG VERIFIED FIXED: Customer booking (Sarah Test) APPEARS in admin dashboard with all correct details (name, phone, email, service, date, message). Admin booking management: Confirm, Complete, Delete, and Logout all working correctly. Minor: Service displayed as 'RUG CLEANING' (all caps) in booking card. One non-critical Cloudflare RUM request failed (monitoring only, does not affect functionality)."
 
 metadata:
   created_by: "main_agent"
   version: "1.0"
-  test_sequence: 1
+  test_sequence: 2
   run_ui: false
 
 test_plan:
@@ -177,4 +180,10 @@ agent_communication:
     -message: "Migrated the user's own GitHub repo (ACT QBN Carpet Cleaning) into the workspace. Please test all backend endpoints. Admin credentials: admin.actqbncc@gmail.com / mlpmlp652. Note lockout after 5 failed attempts per IP+email (15 min) — use correct creds to avoid lockout. Email sending is intentionally optional and should not block booking creation."
     -agent: "testing"
     -message: "✅ ALL BACKEND TESTS PASSED (16/16 - 100% success rate). Tested: health/root endpoints, booking creation with validation, admin auth (login/me) with JWT, protected booking management (list/update/delete). Email notification correctly skipped when EMERGENT_EMAIL_KEY not configured. All validation, authentication, authorization, and error handling working as expected. Backend is fully functional and ready for production."
+    -agent: "testing"
+    -message: "✅ ALL FRONTEND & END-TO-END TESTS PASSED (4/4 test suites - 100% success rate). CRITICAL BUG VERIFIED FIXED: Customer bookings DO appear in admin dashboard. Tested: (1) Navigation - all landing page components verified (navbar, hero, services, gallery, reviews). (2) Booking submission - form submission successful, API returned 201, toast appeared, form reset. (3) Admin login + booking appears - authentication successful, Sarah Test booking found in dashboard with all correct details. (4) Admin booking management - confirm, complete, delete, logout all working. Minor: Service displayed in all caps, one non-critical Cloudflare RUM monitoring request failed. Application is fully functional and ready for production."
 
+
+agent_communication:
+    -agent: "main"
+    -message: "USER BUG REPORT (Arabic): customer bookings not showing in admin panel. ROOT CAUSE: source repo AdminPage.jsx had broken template literals in the login handler (missing backticks), so admin login crashed and bookings could never load. FIXED during migration. Ran full e2e frontend test — PASSED 4/4: navigation, booking submission (POST 201), admin login, booking appears in dashboard with all fields, status confirm/complete/delete, logout. Bug verified FIXED by testing agent."
