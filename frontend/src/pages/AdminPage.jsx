@@ -3,7 +3,7 @@ import axios from "axios";
 import { toast } from "sonner";
 import {
   Loader2, LogOut, Trash2, Check, CheckCheck, Ban,
-  Mail, Phone, CalendarDays, Droplets, MessageSquare, RefreshCw, Download, DollarSign,
+  Mail, Phone, CalendarDays, Droplets, MessageSquare, RefreshCw, Download, DollarSign, CreditCard,
 } from "lucide-react";
 
 const API = `${process.env.REACT_APP_BACKEND_URL}/api`;
@@ -116,12 +116,14 @@ const AdminPage = () => {
       toast.error("No bookings to export.");
       return;
     }
-    const headers = ["Name", "Phone", "Email", "Service", "Date", "Time", "Est. Total", "Quote Details", "Message", "Status", "Created At"];
+    const headers = ["Name", "Phone", "Email", "Service", "Date", "Time", "Est. Total", "Quote Details", "Payment Method", "Payment Status", "Message", "Status", "Created At"];
     const esc = (v) => `"${String(v ?? "").replace(/"/g, '""')}"`;
     const rows = bookings.map((b) => [
       b.name, b.phone, b.email, b.service, b.preferred_date || "", b.preferred_time || "",
-      b.quote_total != null ? `$${b.quote_total}` : "", b.quote_summary || "", b.message || "",
-      b.status, b.created_at ? new Date(b.created_at).toLocaleString() : "",
+      b.quote_total != null ? `$${b.quote_total}` : "", b.quote_summary || "",
+      b.payment_method === "online" ? "Pay Online" : "Pay on Completion",
+      b.payment_status === "paid" ? "Paid" : "Unpaid",
+      b.message || "", b.status, b.created_at ? new Date(b.created_at).toLocaleString() : "",
     ].map(esc).join(","));
     const csv = "\uFEFF" + [headers.map(esc).join(","), ...rows].join("\r\n");
     const blob = new Blob([csv], { type: "text/csv;charset=utf-8;" });
@@ -266,17 +268,30 @@ const AdminPage = () => {
                     <h3 className="font-display font-bold text-lg metallic-text-sm">{b.name}</h3>
                     <p className="text-xs text-[#4CC9F0] uppercase tracking-[0.2em] mt-1">{b.service}</p>
                   </div>
-                  <span
-                    data-testid={`booking-status-${b.id}`}
-                    className={`text-[10px] font-bold uppercase tracking-[0.2em] border rounded-full px-3.5 py-1.5 ${statusStyles[b.status] || statusStyles.new}`}
-                  >
-                    {b.status}
-                  </span>
+                  <div className="flex flex-col items-end gap-2">
+                    <span
+                      data-testid={`booking-status-${b.id}`}
+                      className={`text-[10px] font-bold uppercase tracking-[0.2em] border rounded-full px-3.5 py-1.5 ${statusStyles[b.status] || statusStyles.new}`}
+                    >
+                      {b.status}
+                    </span>
+                    <span
+                      data-testid={`booking-payment-${b.id}`}
+                      className={`text-[10px] font-bold uppercase tracking-[0.2em] border rounded-full px-3.5 py-1.5 ${
+                        b.payment_status === "paid"
+                          ? "text-emerald-300 border-emerald-300/50 bg-emerald-300/10"
+                          : "text-amber-300 border-amber-300/50 bg-amber-300/10"
+                      }`}
+                    >
+                      {b.payment_status === "paid" ? "Paid" : "Unpaid"}
+                    </span>
+                  </div>
                 </div>
 
                 <div className="space-y-2.5 text-sm text-[#94A3B8] mb-6">
                   <p className="flex items-center gap-2.5"><Phone className="w-4 h-4 text-[#4CC9F0]" /> {b.phone}</p>
                   <p className="flex items-center gap-2.5"><Mail className="w-4 h-4 text-[#4CC9F0]" /> {b.email}</p>
+                  <p className="flex items-center gap-2.5"><CreditCard className="w-4 h-4 text-[#4CC9F0]" /> {b.payment_method === "online" ? "Pay Online (Card / Apple Pay)" : "Pay on Completion (Cash / EFTPOS)"}</p>
                   <p className="flex items-center gap-2.5"><CalendarDays className="w-4 h-4 text-[#4CC9F0]" /> {b.preferred_date || "No date specified"}{b.preferred_time ? ` · ${b.preferred_time}` : ""}</p>
                   {b.quote_total != null && (
                     <p data-testid={`booking-quote-${b.id}`} className="flex items-start gap-2.5">

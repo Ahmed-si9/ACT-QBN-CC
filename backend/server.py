@@ -15,6 +15,7 @@ import uuid
 import httpx
 import bcrypt
 import jwt
+import stripe
 from html import escape
 from html.parser import HTMLParser
 from urllib.parse import urlparse
@@ -39,6 +40,11 @@ EMAIL_KEY = os.environ.get("EMERGENT_EMAIL_KEY")
 EMAIL_FROM_NAME = os.environ.get("EMAIL_FROM_NAME", "ACT QBN Carpet Cleaning")
 EMAIL_REPLY_TO = os.environ.get("EMAIL_REPLY_TO")
 OWNER_EMAIL = os.environ.get("OWNER_EMAIL")
+
+# --- Stripe config ---
+stripe.api_key = os.environ.get("STRIPE_SECRET_KEY") or "sk_test_emergent"
+STRIPE_WEBHOOK_SECRET = os.environ.get("STRIPE_WEBHOOK_SECRET", "")
+STRIPE_CURRENCY = "aud"
 
 # --- Email guardrail gate (G2/G3) ---
 _SHORTENERS = ("bit.ly", "tinyurl.com", "t.co", "is.gd", "cutt.ly", "goo.gl", "rebrand.ly")
@@ -217,6 +223,9 @@ class Booking(BaseModel):
     preferred_time: Optional[str] = None
     quote_summary: Optional[str] = None
     quote_total: Optional[float] = None
+    payment_method: Optional[str] = "on_completion"   # "online" | "on_completion"
+    payment_choice: Optional[str] = None              # e.g. "card_applepay" | "cash_eftpos"
+    payment_status: str = "unpaid"                     # "unpaid" | "paid"
     message: Optional[str] = None
     status: str = "new"
     created_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
@@ -231,6 +240,8 @@ class BookingCreate(BaseModel):
     preferred_time: Optional[str] = None
     quote_summary: Optional[str] = None
     quote_total: Optional[float] = None
+    payment_method: Optional[str] = "on_completion"
+    payment_choice: Optional[str] = None
     message: Optional[str] = None
 
 
@@ -357,6 +368,7 @@ async def create_booking(input: BookingCreate):
         + row("Preferred Time", escape(booking.preferred_time or "Not specified"))
         + row("Estimated Quote", escape(f"${booking.quote_total:.0f}" if booking.quote_total else "Not calculated"))
         + row("Quote Details", escape(booking.quote_summary or "—"))
+        + row("Payment", escape(f"{(booking.payment_method or 'on_completion').replace('_',' ').title()} — {booking.payment_status.title()}"))
         + row("Message", escape(booking.message or "—"))
         + '</table></td></tr>'
         f'<tr><td style="padding:16px 24px;font-size:12px;color:#94a3b8;border-top:1px solid #e2e8f0">Sent by {escape(EMAIL_FROM_NAME)} booking system. Reply to this email to contact the customer directly.</td></tr>'
@@ -440,6 +452,94 @@ async def logout(response: Response):
 @api_router.get("/auth/me")
 async def me(user: dict = Depends(get_current_user)):
     return user
+
+
+# --- Payment routes (Stripe Checkout) ---
+class CheckoutRequest(BaseModel):
+    booking_id: str
+    origin_url: str
+
+
+@api_router.post("/payments/checkout")
+async def create_checkout(req: CheckoutRequest):
+    booking = await db.bookings.find_one({"id": req.booking_id}, {"_id": 0})
+    if not booking:
+        raise HTTPException(status_code=404, detail="Booking not found")
+    amount = float(booking.get("quote_total") or 0)
+    if amount <= 0:
+        raise HTTPException(status_code=400, detail="Add items to the quote estimator so we know the amount to charge, or choose Pay on Completion.")
+
+    session = stripe.checkout.Session.create(
+        mode="payment",
+        line_items=[{
+            "price_data": {
+                "currency": STRIPE_CURRENCY,
+                "unit_amount": round(amount * 100),
+                "product_data": {
+                    "name": f"ACT QBN Carpet Cleaning — {booking.get('service', 'Booking')}",
+                    "description": booking.get("quote_summary") or "Carpet cleaning booking",
+                },
+            },
+            "quantity": 1,
+        }],
+        success_url=f"{req.origin_url}/payment/success?session_id={{CHECKOUT_SESSION_ID}}",
+        cancel_url=f"{req.origin_url}/payment/cancel?session_id={{CHECKOUT_SESSION_ID}}",
+        metadata={"booking_id": booking["id"]},
+    )
+    await db.payment_transactions.insert_one({
+        "session_id": session.id,
+        "booking_id": booking["id"],
+        "amount": amount,
+        "currency": STRIPE_CURRENCY,
+        "status": "initiated",
+        "payment_status": "pending",
+        "created_at": datetime.now(timezone.utc).isoformat(),
+        "updated_at": datetime.now(timezone.utc).isoformat(),
+    })
+    return {"checkout_url": session.url, "session_id": session.id}
+
+
+async def _mark_paid(session_id: str, booking_id: str = None):
+    await db.payment_transactions.update_one(
+        {"session_id": session_id, "payment_status": {"$ne": "paid"}},
+        {"$set": {"status": "completed", "payment_status": "paid", "updated_at": datetime.now(timezone.utc).isoformat()}},
+    )
+    txn = await db.payment_transactions.find_one({"session_id": session_id}, {"_id": 0})
+    bid = booking_id or (txn or {}).get("booking_id")
+    if bid:
+        await db.bookings.update_one({"id": bid}, {"$set": {"payment_status": "paid"}})
+
+
+@api_router.get("/payments/status/{session_id}")
+async def payment_status(session_id: str):
+    record = await db.payment_transactions.find_one({"session_id": session_id}, {"_id": 0})
+    if not record:
+        raise HTTPException(status_code=404, detail="Transaction not found")
+    if record.get("payment_status") != "paid":
+        try:
+            s = stripe.checkout.Session.retrieve(session_id)
+            if s.payment_status == "paid" or s.status == "complete":
+                await _mark_paid(session_id, record.get("booking_id"))
+                record = await db.payment_transactions.find_one({"session_id": session_id}, {"_id": 0})
+        except stripe.error.StripeError:
+            pass
+    return {"session_id": record["session_id"], "status": record["status"], "payment_status": record["payment_status"]}
+
+
+@api_router.post("/stripe/webhook")
+async def stripe_webhook(request: Request):
+    payload = await request.body()
+    sig = request.headers.get("stripe-signature", "")
+    try:
+        event = stripe.Webhook.construct_event(payload, sig, STRIPE_WEBHOOK_SECRET)
+    except (stripe.error.SignatureVerificationError, ValueError):
+        raise HTTPException(status_code=400, detail="Invalid signature")
+    obj, t = event["data"]["object"], event["type"]
+    if t == "checkout.session.completed" and obj.get("payment_status") == "paid":
+        await _mark_paid(obj["id"], (obj.get("metadata") or {}).get("booking_id"))
+    elif t == "checkout.session.async_payment_succeeded":
+        await _mark_paid(obj["id"], (obj.get("metadata") or {}).get("booking_id"))
+    return {"status": "ok"}
 
 
 app.include_router(api_router)

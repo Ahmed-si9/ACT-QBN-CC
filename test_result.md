@@ -166,7 +166,7 @@ frontend:
 metadata:
   created_by: "main_agent"
   version: "1.0"
-  test_sequence: 5
+  test_sequence: 6
   run_ui: false
 
 test_plan:
@@ -363,3 +363,53 @@ agent_communication:
 agent_communication:
     -agent: "testing"
     -message: "Quote calculator + attach + CSV export PASSED. Calculator total updates live with steppers, $99 minimum floor enforced. Booking attaches quote_total+quote_summary; admin card shows 'Est. $N' + summary + date/time. Export CSV downloads actqbn-bookings-YYYY-MM-DD.csv with success toast. Only non-critical Cloudflare RUM analytics failed."
+
+## FEATURE: online payments (Stripe) + payment method + admin payment status
+backend:
+  - task: "Stripe checkout + payment status + booking payment fields"
+    implemented: true
+    working: true
+    file: "backend/server.py"
+    stuck_count: 0
+    priority: "high"
+    needs_retesting: false
+    status_history:
+        -working: "NA"
+        -agent: "main"
+        -comment: "Flow A claimable sandbox (AU). Added Booking fields payment_method/payment_choice/payment_status(default unpaid). POST /api/payments/checkout(booking_id, origin_url) creates Stripe session (AUD, amount=quote_total) and inserts payment_transactions. GET /api/payments/status/{session_id} polls Stripe and marks booking paid. POST /api/stripe/webhook idempotent. Verified checkout returns real checkout.stripe.com URL via curl."
+        -working: true
+        -agent: "testing"
+        -comment: "✅ PASSED (8/8 - 100% success rate) - All Stripe payment endpoints working correctly. TEST 1: POST /api/bookings with payment_method='online', quote_total=205 returns 201 with payment_method='online' and payment_status='unpaid' ✅. TEST 2: POST /api/payments/checkout returns 200 with checkout_url containing 'checkout.stripe.com' and session_id starting with 'cs_test_' ✅. TEST 3: GET /api/payments/status/{session_id} returns 200 with payment_status='pending' (correct, no card entered), booking payment_status remains 'unpaid' ✅. TEST 4: Guard - zero amount correctly rejected with 400 'Add items to the quote estimator...' ✅. TEST 5: Guard - unknown booking_id correctly rejected with 404 'Booking not found' ✅. TEST 6: Pay-on-completion booking created with payment_method='on_completion', payment_status='unpaid' ✅. TEST 7: Admin GET /api/bookings returns bookings with payment_method, payment_status, and payment_choice fields ✅. TEST 8: Cleanup - all test bookings deleted successfully (204) ✅. All payment flows, guards, and admin visibility working as expected."
+frontend:
+  - task: "Payment method selection + Stripe redirect + payment result page + admin payment badges"
+    implemented: true
+    working: true
+    file: "frontend/src/components/Contact.jsx, pages/PaymentResult.jsx, App.js, pages/AdminPage.jsx"
+    stuck_count: 0
+    priority: "high"
+    needs_retesting: false
+    status_history:
+        -working: "NA"
+        -agent: "main"
+        -comment: "Booking form has Pay Online (card/Apple Pay via Stripe) vs Pay on Completion (cash/EFTPOS). Online requires quote_total>0, creates booking then redirects to Stripe. /payment/success & /payment/cancel poll status. Admin card shows Paid/Unpaid badge + method; CSV includes payment columns."
+        -working: true
+        -agent: "testing"
+        -comment: "✅ PASSED (ALL REQUIREMENTS MET - 100% success). TEST A - PAYMENT METHOD UI: Both payment options found (data-testid='payment-online-option' and 'payment-on-completion-option'). Default selection is 'Pay on Completion' (aria-pressed=true). Submit button text changes from 'REQUEST BOOKING' to 'BOOK & PAY ONLINE' when switching to online payment. Helper note about Stripe secure checkout appears when 'Pay Online Now' is selected. TEST B - PAY-ON-COMPLETION END-TO-END: Booking created successfully with name='Cash Customer', phone='0466333444', email='cash.customer@example.com', service='Upholstery Cleaning', date='2026-12-18' (Friday), time='08:00-10:00'. POST /api/bookings returned 201 with booking ID. Form reset correctly (name field empty). No redirect (stayed on landing page). TEST C - ADMIN SHOWS PAYMENT STATUS + METHOD: Admin login successful with credentials admin.actqbncc@gmail.com / mlpmlp652. 'Cash Customer' booking found in admin dashboard. Payment status badge shows 'UNPAID' with amber color (data-testid='booking-payment-{id}'). Payment method line shows 'Pay on Completion (Cash / EFTPOS)' with CreditCard icon. Status badge shows 'NEW' (data-testid='booking-status-{id}'). Booking deleted successfully for cleanup. TEST D - ONLINE PAYMENT REDIRECTS TO STRIPE: EDGE CASE verified - Online payment with $0 quote correctly BLOCKED with error toast 'To pay online, add items to the quote estimator so we know the amount. Or choose Pay on Completion.' No redirect, no booking created. SUCCESSFUL REDIRECT verified - After adding '2BR + Lounge' package (quote total $160), filled form with name='Online Payer', phone='0466555666', email='online.payer@example.com', service='End of Lease Cleaning', date='2026-12-18', time='08:00-10:00'. Submit button clicked, browser SUCCESSFULLY REDIRECTED to checkout.stripe.com with valid session URL (cs_test_a165skC2XrbH06z3cXYkrTNCZts9WBXbRaC5WjhEpYgDLJ5BD3FHbbN86Q). TEST E - PAYMENT CANCEL PAGE: Navigated to /payment/cancel, payment result panel found (data-testid='payment-result' with data-state='cancelled'). 'Payment Cancelled' message displayed correctly. 'Back to Home' link found (data-testid='payment-home-link' with href='/'). Link clicked, successfully returned to landing page '/'. Minor: Button text and badge text displayed in ALL CAPS (styling choice, not a functional issue). All critical validations passed: payment method toggle changes button text, pay-on-completion books successfully and shows 'Unpaid' + method in admin, online payment with positive quote redirects to checkout.stripe.com, online payment with $0 quote blocked with helpful error."
+
+test_plan:
+  current_focus: []
+  stuck_tasks: []
+  test_all: false
+  test_priority: "high_first"
+
+agent_communication:
+    -agent: "main"
+    -message: "Retest backend payments: (1) POST /api/bookings with payment_method=online, quote_total=205 -> 201, payment_status unpaid. (2) POST /api/payments/checkout {booking_id, origin_url} -> 200 with checkout_url containing checkout.stripe.com and session_id. (3) GET /api/payments/status/{session_id} -> 200 payment_status pending (not paid, since unpaid in test). (4) checkout with a booking that has quote_total=0/None -> 400. (5) pay_on_completion booking stays unpaid and no payment needed. Admin creds admin.actqbncc@gmail.com/mlpmlp652."
+    -agent: "testing"
+    -message: "✅ STRIPE PAYMENT BACKEND TESTS PASSED (8/8 - 100% success rate). All payment endpoints working correctly: (1) ONLINE booking creation with payment_method='online' and payment_status='unpaid' ✅. (2) Stripe checkout session creation returns valid checkout.stripe.com URL and cs_test_ session_id ✅. (3) Payment status polling returns 'pending' (correct, no card entered), booking remains 'unpaid' ✅. (4) Guard: zero amount correctly rejected with 400 ✅. (5) Guard: unknown booking correctly rejected with 404 ✅. (6) Pay-on-completion booking created with correct payment fields ✅. (7) Admin can see payment_method, payment_status, payment_choice fields in bookings ✅. (8) Cleanup successful ✅. Backend payment integration is production-ready. Frontend testing NOT performed as per system prompt (DO NOT TEST FRONTEND)."
+    -agent: "testing"
+    -message: "✅ PAYMENT OPTIONS FRONTEND TESTS PASSED (ALL 5 TEST SUITES - 100% success rate). Tested all requirements from review_request: (A) Payment method UI - Both options present, default 'Pay on Completion' selected, clicking 'Pay Online Now' highlights it and shows Stripe helper text, submit button text changes from 'REQUEST BOOKING' to 'BOOK & PAY ONLINE'. (B) Pay-on-completion end-to-end - Booking created successfully (POST /api/bookings returned 201), form reset, no redirect (stayed on page). (C) Admin shows payment status + method - 'Cash Customer' booking appears in admin with 'UNPAID' badge (amber color) and 'Pay on Completion (Cash / EFTPOS)' line, status badge present. (D) Online payment redirects to Stripe - EDGE CASE: $0 quote correctly blocked with error toast, no redirect. SUCCESSFUL: With $160 quote (2BR + Lounge package), browser successfully redirected to checkout.stripe.com with valid session URL. (E) Payment cancel page - /payment/cancel shows 'Payment Cancelled' message, 'Back to Home' link returns to '/'. All critical validations passed. Minor: Text displayed in ALL CAPS (styling choice, not functional issue). Feature is production-ready."
+
+agent_communication:
+    -agent: "testing"
+    -message: "Payment feature PASSED 5/5. Method toggle changes submit label; Pay on Completion books and shows Unpaid + method in admin; Pay Online with positive quote redirects to checkout.stripe.com; $0 online blocked with helpful error; /payment/cancel page renders. Backend payments 8/8 earlier."

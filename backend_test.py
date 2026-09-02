@@ -1,477 +1,486 @@
 #!/usr/bin/env python3
 """
-Backend API Test Suite for ACT QBN Carpet Cleaning
-Tests all backend endpoints as per review request
+Backend API tests for ACT QBN Carpet Cleaning - Stripe Payment Integration
+Tests all payment endpoints and guards as specified in the review request.
 """
 
 import requests
-import json
 import sys
-from datetime import datetime
+import json
+from typing import Dict, Any
 
-# Backend base URL from frontend .env
+# Use external URL from frontend/.env
 BASE_URL = "https://my-website-clone.preview.emergentagent.com/api"
 
-# Admin credentials
+# Admin credentials from test_result.md
 ADMIN_EMAIL = "admin.actqbncc@gmail.com"
 ADMIN_PASSWORD = "mlpmlp652"
 
-# Test results tracking
+# Test tracking
 test_results = []
-booking_id = None
-access_token = None
+created_booking_ids = []
 
 
-def log_test(test_name, passed, details=""):
+def log_test(test_name: str, passed: bool, details: str = ""):
     """Log test result"""
     status = "✅ PASS" if passed else "❌ FAIL"
-    result = f"{status} - {test_name}"
+    print(f"\n{status}: {test_name}")
     if details:
-        result += f"\n    Details: {details}"
-    print(result)
+        print(f"  Details: {details}")
     test_results.append({"test": test_name, "passed": passed, "details": details})
 
 
-def test_health_endpoint():
-    """Test 1: GET /api/health"""
-    print("\n=== Test 1: Health Endpoint ===")
-    try:
-        response = requests.get(f"{BASE_URL}/health", timeout=10)
-        expected = {"status": "ok"}
-        
-        if response.status_code == 200 and response.json() == expected:
-            log_test("GET /api/health", True, f"Response: {response.json()}")
-        else:
-            log_test("GET /api/health", False, f"Status: {response.status_code}, Body: {response.text}")
-    except Exception as e:
-        log_test("GET /api/health", False, f"Exception: {str(e)}")
+def get_admin_token() -> str:
+    """Login as admin and get Bearer token"""
+    print("\n🔐 Logging in as admin...")
+    resp = requests.post(
+        f"{BASE_URL}/auth/login",
+        json={"email": ADMIN_EMAIL, "password": ADMIN_PASSWORD},
+        timeout=10
+    )
+    if resp.status_code != 200:
+        print(f"❌ Admin login failed: {resp.status_code} - {resp.text}")
+        sys.exit(1)
+    
+    data = resp.json()
+    token = data.get("access_token")
+    if not token:
+        print(f"❌ No access_token in login response: {data}")
+        sys.exit(1)
+    
+    print(f"✅ Admin login successful")
+    return token
 
 
-def test_root_endpoint():
-    """Test 1b: GET /api/"""
-    print("\n=== Test 1b: Root Endpoint ===")
-    try:
-        response = requests.get(f"{BASE_URL}/", timeout=10)
-        
-        if response.status_code == 200 and "message" in response.json():
-            log_test("GET /api/", True, f"Response: {response.json()}")
-        else:
-            log_test("GET /api/", False, f"Status: {response.status_code}, Body: {response.text}")
-    except Exception as e:
-        log_test("GET /api/", False, f"Exception: {str(e)}")
-
-
-def test_booking_creation_valid():
-    """Test 2: POST /api/bookings with valid data"""
-    print("\n=== Test 2: Create Booking (Valid) ===")
-    global booking_id
-    
-    booking_data = {
-        "name": "John Smith",
-        "phone": "0412345678",
-        "email": "john.smith@example.com",
-        "service": "Deep Carpet Cleaning",
-        "preferred_date": "2026-02-15",
-        "message": "Please call before arriving"
-    }
-    
-    try:
-        response = requests.post(f"{BASE_URL}/bookings", json=booking_data, timeout=10)
-        
-        if response.status_code == 201:
-            data = response.json()
-            if all(k in data for k in ["id", "status", "created_at"]) and data["status"] == "new":
-                booking_id = data["id"]
-                log_test("POST /api/bookings (valid)", True, 
-                        f"Booking created with id={booking_id}, status={data['status']}")
-            else:
-                log_test("POST /api/bookings (valid)", False, 
-                        f"Missing required fields or wrong status. Response: {data}")
-        else:
-            log_test("POST /api/bookings (valid)", False, 
-                    f"Expected 201, got {response.status_code}. Body: {response.text}")
-    except Exception as e:
-        log_test("POST /api/bookings (valid)", False, f"Exception: {str(e)}")
-
-
-def test_booking_validation():
-    """Test 2b: POST /api/bookings with invalid data"""
-    print("\n=== Test 2b: Booking Validation ===")
-    
-    # Test 1: Missing name (too short)
-    invalid_data_1 = {
-        "name": "J",  # Too short (min_length=2)
-        "phone": "0412345678",
-        "email": "test@example.com",
-        "service": "Cleaning"
-    }
-    
-    try:
-        response = requests.post(f"{BASE_URL}/bookings", json=invalid_data_1, timeout=10)
-        if response.status_code == 422:
-            log_test("POST /api/bookings (short name)", True, "Correctly rejected short name")
-        else:
-            log_test("POST /api/bookings (short name)", False, 
-                    f"Expected 422, got {response.status_code}")
-    except Exception as e:
-        log_test("POST /api/bookings (short name)", False, f"Exception: {str(e)}")
-    
-    # Test 2: Invalid email
-    invalid_data_2 = {
-        "name": "John Smith",
-        "phone": "0412345678",
-        "email": "not-an-email",
-        "service": "Cleaning"
-    }
-    
-    try:
-        response = requests.post(f"{BASE_URL}/bookings", json=invalid_data_2, timeout=10)
-        if response.status_code == 422:
-            log_test("POST /api/bookings (invalid email)", True, "Correctly rejected invalid email")
-        else:
-            log_test("POST /api/bookings (invalid email)", False, 
-                    f"Expected 422, got {response.status_code}")
-    except Exception as e:
-        log_test("POST /api/bookings (invalid email)", False, f"Exception: {str(e)}")
-    
-    # Test 3: Short phone (min 6)
-    invalid_data_3 = {
-        "name": "John Smith",
-        "phone": "12345",  # Too short
-        "email": "test@example.com",
-        "service": "Cleaning"
-    }
-    
-    try:
-        response = requests.post(f"{BASE_URL}/bookings", json=invalid_data_3, timeout=10)
-        if response.status_code == 422:
-            log_test("POST /api/bookings (short phone)", True, "Correctly rejected short phone")
-        else:
-            log_test("POST /api/bookings (short phone)", False, 
-                    f"Expected 422, got {response.status_code}")
-    except Exception as e:
-        log_test("POST /api/bookings (short phone)", False, f"Exception: {str(e)}")
-
-
-def test_auth_login_valid():
-    """Test 3: POST /api/auth/login with correct credentials"""
-    print("\n=== Test 3: Admin Login (Valid) ===")
-    global access_token
-    
-    login_data = {
-        "email": ADMIN_EMAIL,
-        "password": ADMIN_PASSWORD
-    }
-    
-    try:
-        response = requests.post(f"{BASE_URL}/auth/login", json=login_data, timeout=10)
-        
-        if response.status_code == 200:
-            data = response.json()
-            if "access_token" in data and "name" in data and "role" in data:
-                access_token = data["access_token"]
-                log_test("POST /api/auth/login (valid)", True, 
-                        f"Login successful. Role: {data['role']}, Name: {data['name']}")
-            else:
-                log_test("POST /api/auth/login (valid)", False, 
-                        f"Missing required fields. Response: {data}")
-        else:
-            log_test("POST /api/auth/login (valid)", False, 
-                    f"Expected 200, got {response.status_code}. Body: {response.text}")
-    except Exception as e:
-        log_test("POST /api/auth/login (valid)", False, f"Exception: {str(e)}")
-
-
-def test_auth_login_invalid():
-    """Test 3b: POST /api/auth/login with wrong password (using different email to avoid lockout)"""
-    print("\n=== Test 3b: Admin Login (Invalid - Different Email) ===")
-    
-    # Use a DIFFERENT email to avoid locking out the real admin
-    login_data = {
-        "email": "wrong@example.com",
-        "password": "wrongpassword"
-    }
-    
-    try:
-        response = requests.post(f"{BASE_URL}/auth/login", json=login_data, timeout=10)
-        
-        if response.status_code == 401:
-            log_test("POST /api/auth/login (invalid)", True, "Correctly rejected wrong credentials")
-        else:
-            log_test("POST /api/auth/login (invalid)", False, 
-                    f"Expected 401, got {response.status_code}")
-    except Exception as e:
-        log_test("POST /api/auth/login (invalid)", False, f"Exception: {str(e)}")
-
-
-def test_auth_me():
-    """Test 3c: GET /api/auth/me with Bearer token"""
-    print("\n=== Test 3c: Get Current User ===")
-    
-    if not access_token:
-        log_test("GET /api/auth/me", False, "No access token available (login failed)")
+def cleanup_bookings(token: str):
+    """Delete all test bookings created during this test run"""
+    if not created_booking_ids:
+        print("\n🧹 No bookings to clean up")
         return
     
-    headers = {"Authorization": f"Bearer {access_token}"}
+    print(f"\n🧹 Cleaning up {len(created_booking_ids)} test booking(s)...")
+    headers = {"Authorization": f"Bearer {token}"}
     
-    try:
-        response = requests.get(f"{BASE_URL}/auth/me", headers=headers, timeout=10)
-        
-        if response.status_code == 200:
-            data = response.json()
-            if "email" in data and "password_hash" not in data:
-                log_test("GET /api/auth/me", True, 
-                        f"User info retrieved. Email: {data.get('email')}, no password_hash exposed")
-            else:
-                log_test("GET /api/auth/me", False, 
-                        f"password_hash exposed or missing email. Response: {data}")
+    for booking_id in created_booking_ids:
+        resp = requests.delete(f"{BASE_URL}/bookings/{booking_id}", headers=headers, timeout=10)
+        if resp.status_code == 204:
+            print(f"  ✅ Deleted booking {booking_id}")
         else:
-            log_test("GET /api/auth/me", False, 
-                    f"Expected 200, got {response.status_code}. Body: {response.text}")
-    except Exception as e:
-        log_test("GET /api/auth/me", False, f"Exception: {str(e)}")
+            print(f"  ⚠️  Failed to delete booking {booking_id}: {resp.status_code}")
 
 
-def test_bookings_list_unauthorized():
-    """Test 3d: GET /api/bookings without token"""
-    print("\n=== Test 3d: List Bookings (Unauthorized) ===")
+def test_1_create_online_booking():
+    """TEST 1: Create an ONLINE booking with payment_method='online'"""
+    print("\n" + "="*80)
+    print("TEST 1: Create ONLINE booking")
+    print("="*80)
     
-    try:
-        response = requests.get(f"{BASE_URL}/bookings", timeout=10)
-        
-        if response.status_code == 401:
-            log_test("GET /api/bookings (no auth)", True, "Correctly rejected unauthorized request")
-        else:
-            log_test("GET /api/bookings (no auth)", False, 
-                    f"Expected 401, got {response.status_code}")
-    except Exception as e:
-        log_test("GET /api/bookings (no auth)", False, f"Exception: {str(e)}")
+    payload = {
+        "name": "Pay Online Test",
+        "phone": "0466111000",
+        "email": "payonline@example.com",
+        "service": "Rug Cleaning",
+        "preferred_date": "2026-12-11",
+        "preferred_time": "08:00 - 10:00",
+        "quote_total": 205,
+        "quote_summary": "2BR $160 + room $45",
+        "payment_method": "online",
+        "payment_choice": "card_applepay"
+    }
+    
+    resp = requests.post(f"{BASE_URL}/bookings", json=payload, timeout=10)
+    
+    if resp.status_code != 201:
+        log_test("Create ONLINE booking", False, f"Expected 201, got {resp.status_code}: {resp.text}")
+        return None
+    
+    data = resp.json()
+    booking_id = data.get("id")
+    
+    # Verify response includes payment fields
+    payment_method = data.get("payment_method")
+    payment_status = data.get("payment_status")
+    
+    if payment_method != "online":
+        log_test("Create ONLINE booking", False, f"payment_method is '{payment_method}', expected 'online'")
+        return None
+    
+    if payment_status != "unpaid":
+        log_test("Create ONLINE booking", False, f"payment_status is '{payment_status}', expected 'unpaid'")
+        return None
+    
+    log_test("Create ONLINE booking", True, 
+             f"Booking ID: {booking_id}, payment_method: {payment_method}, payment_status: {payment_status}")
+    
+    created_booking_ids.append(booking_id)
+    return booking_id
 
 
-def test_bookings_list_authorized():
-    """Test 3e: GET /api/bookings with valid Bearer token"""
-    print("\n=== Test 3e: List Bookings (Authorized) ===")
-    
-    if not access_token:
-        log_test("GET /api/bookings (authorized)", False, "No access token available")
-        return
-    
-    headers = {"Authorization": f"Bearer {access_token}"}
-    
-    try:
-        response = requests.get(f"{BASE_URL}/bookings", headers=headers, timeout=10)
-        
-        if response.status_code == 200:
-            data = response.json()
-            if isinstance(data, list):
-                # Check if our booking is in the list
-                found = any(b.get("id") == booking_id for b in data) if booking_id else True
-                if found or len(data) >= 0:  # Accept empty list or list with our booking
-                    log_test("GET /api/bookings (authorized)", True, 
-                            f"Retrieved {len(data)} bookings. Our booking found: {found}")
-                else:
-                    log_test("GET /api/bookings (authorized)", False, 
-                            f"Our booking (id={booking_id}) not found in list")
-            else:
-                log_test("GET /api/bookings (authorized)", False, 
-                        f"Expected list, got {type(data)}")
-        else:
-            log_test("GET /api/bookings (authorized)", False, 
-                    f"Expected 200, got {response.status_code}. Body: {response.text}")
-    except Exception as e:
-        log_test("GET /api/bookings (authorized)", False, f"Exception: {str(e)}")
-
-
-def test_booking_update_valid():
-    """Test 4: PATCH /api/bookings/{id} with valid status"""
-    print("\n=== Test 4: Update Booking Status (Valid) ===")
-    
-    if not access_token:
-        log_test("PATCH /api/bookings/{id} (valid)", False, "No access token available")
-        return
+def test_2_create_checkout(booking_id: str):
+    """TEST 2: Create Stripe checkout session"""
+    print("\n" + "="*80)
+    print("TEST 2: Create Stripe checkout session")
+    print("="*80)
     
     if not booking_id:
-        log_test("PATCH /api/bookings/{id} (valid)", False, "No booking ID available")
+        log_test("Create checkout session", False, "No booking_id from TEST 1")
+        return None
+    
+    payload = {
+        "booking_id": booking_id,
+        "origin_url": "https://example-preview.com"
+    }
+    
+    resp = requests.post(f"{BASE_URL}/payments/checkout", json=payload, timeout=10)
+    
+    if resp.status_code != 200:
+        log_test("Create checkout session", False, f"Expected 200, got {resp.status_code}: {resp.text}")
+        return None
+    
+    data = resp.json()
+    checkout_url = data.get("checkout_url")
+    session_id = data.get("session_id")
+    
+    # Verify checkout_url contains "checkout.stripe.com"
+    if not checkout_url or "checkout.stripe.com" not in checkout_url:
+        log_test("Create checkout session", False, 
+                 f"checkout_url does not contain 'checkout.stripe.com': {checkout_url}")
+        return None
+    
+    # Verify session_id starts with "cs_test_"
+    if not session_id or not session_id.startswith("cs_test_"):
+        log_test("Create checkout session", False, 
+                 f"session_id does not start with 'cs_test_': {session_id}")
+        return None
+    
+    log_test("Create checkout session", True, 
+             f"checkout_url: {checkout_url[:50]}..., session_id: {session_id}")
+    
+    return session_id
+
+
+def test_3_payment_status_polling(session_id: str, booking_id: str, token: str):
+    """TEST 3: Poll payment status - should be 'pending' since no card entered"""
+    print("\n" + "="*80)
+    print("TEST 3: Payment status polling")
+    print("="*80)
+    
+    if not session_id:
+        log_test("Payment status polling", False, "No session_id from TEST 2")
         return
     
-    headers = {"Authorization": f"Bearer {access_token}"}
-    update_data = {"status": "confirmed"}
+    # Poll payment status
+    resp = requests.get(f"{BASE_URL}/payments/status/{session_id}", timeout=10)
     
-    try:
-        response = requests.patch(f"{BASE_URL}/bookings/{booking_id}", 
-                                 json=update_data, headers=headers, timeout=10)
-        
-        if response.status_code == 200:
-            data = response.json()
-            if data.get("status") == "confirmed":
-                log_test("PATCH /api/bookings/{id} (valid)", True, 
-                        f"Status updated to 'confirmed'")
-            else:
-                log_test("PATCH /api/bookings/{id} (valid)", False, 
-                        f"Status not updated correctly. Response: {data}")
+    if resp.status_code != 200:
+        log_test("Payment status polling", False, f"Expected 200, got {resp.status_code}: {resp.text}")
+        return
+    
+    data = resp.json()
+    returned_session_id = data.get("session_id")
+    status = data.get("status")
+    payment_status = data.get("payment_status")
+    
+    # Verify session_id matches
+    if returned_session_id != session_id:
+        log_test("Payment status polling", False, 
+                 f"session_id mismatch: expected {session_id}, got {returned_session_id}")
+        return
+    
+    # Verify payment_status is "pending" (not "paid" since no card was entered)
+    if payment_status != "pending":
+        log_test("Payment status polling", False, 
+                 f"payment_status is '{payment_status}', expected 'pending' (no card entered)")
+        return
+    
+    log_test("Payment status polling", True, 
+             f"session_id: {returned_session_id}, status: {status}, payment_status: {payment_status}")
+    
+    # Also verify the booking still has payment_status "unpaid"
+    print("\n  Verifying booking payment_status via GET /api/bookings...")
+    headers = {"Authorization": f"Bearer {token}"}
+    resp = requests.get(f"{BASE_URL}/bookings", headers=headers, timeout=10)
+    
+    if resp.status_code != 200:
+        print(f"  ⚠️  Failed to get bookings: {resp.status_code}")
+        return
+    
+    bookings = resp.json()
+    booking = next((b for b in bookings if b.get("id") == booking_id), None)
+    
+    if not booking:
+        print(f"  ⚠️  Booking {booking_id} not found in bookings list")
+        return
+    
+    booking_payment_status = booking.get("payment_status")
+    if booking_payment_status != "unpaid":
+        print(f"  ⚠️  Booking payment_status is '{booking_payment_status}', expected 'unpaid'")
+    else:
+        print(f"  ✅ Booking payment_status is 'unpaid' (correct)")
+
+
+def test_4_guard_zero_amount():
+    """TEST 4: Guard - cannot create checkout with zero amount"""
+    print("\n" + "="*80)
+    print("TEST 4: Guard - zero amount")
+    print("="*80)
+    
+    # Create a booking with no quote_total (or 0)
+    payload = {
+        "name": "Zero Amount Test",
+        "phone": "0466222000",
+        "email": "zeroamount@example.com",
+        "service": "Test Service",
+        "preferred_date": "2026-12-12",
+        "preferred_time": "10:00 - 12:00",
+        "payment_method": "online",
+        "payment_choice": "card_applepay"
+        # No quote_total
+    }
+    
+    resp = requests.post(f"{BASE_URL}/bookings", json=payload, timeout=10)
+    
+    if resp.status_code != 201:
+        log_test("Guard - zero amount (create booking)", False, 
+                 f"Expected 201, got {resp.status_code}: {resp.text}")
+        return
+    
+    data = resp.json()
+    booking_id = data.get("id")
+    created_booking_ids.append(booking_id)
+    
+    # Try to create checkout with this booking
+    checkout_payload = {
+        "booking_id": booking_id,
+        "origin_url": "https://example-preview.com"
+    }
+    
+    resp = requests.post(f"{BASE_URL}/payments/checkout", json=checkout_payload, timeout=10)
+    
+    # Should return 400
+    if resp.status_code != 400:
+        log_test("Guard - zero amount", False, 
+                 f"Expected 400, got {resp.status_code}: {resp.text}")
+        return
+    
+    log_test("Guard - zero amount", True, 
+             f"Correctly rejected with 400: {resp.json().get('detail', resp.text)}")
+
+
+def test_5_guard_unknown_booking():
+    """TEST 5: Guard - unknown booking_id"""
+    print("\n" + "="*80)
+    print("TEST 5: Guard - unknown booking")
+    print("="*80)
+    
+    payload = {
+        "booking_id": "nonexistent-id-12345",
+        "origin_url": "https://example-preview.com"
+    }
+    
+    resp = requests.post(f"{BASE_URL}/payments/checkout", json=payload, timeout=10)
+    
+    # Should return 404
+    if resp.status_code != 404:
+        log_test("Guard - unknown booking", False, 
+                 f"Expected 404, got {resp.status_code}: {resp.text}")
+        return
+    
+    log_test("Guard - unknown booking", True, 
+             f"Correctly rejected with 404: {resp.json().get('detail', resp.text)}")
+
+
+def test_6_pay_on_completion_booking():
+    """TEST 6: Pay-on-completion booking"""
+    print("\n" + "="*80)
+    print("TEST 6: Pay-on-completion booking")
+    print("="*80)
+    
+    payload = {
+        "name": "Pay On Completion Test",
+        "phone": "0466333000",
+        "email": "payoncompletion@example.com",
+        "service": "Carpet Steam Cleaning",
+        "preferred_date": "2026-12-13",
+        "preferred_time": "12:00 - 14:00",
+        "quote_total": 99,
+        "quote_summary": "Minimum call-out $99",
+        "payment_method": "on_completion",
+        "payment_choice": "cash_eftpos"
+    }
+    
+    resp = requests.post(f"{BASE_URL}/bookings", json=payload, timeout=10)
+    
+    if resp.status_code != 201:
+        log_test("Pay-on-completion booking", False, 
+                 f"Expected 201, got {resp.status_code}: {resp.text}")
+        return None
+    
+    data = resp.json()
+    booking_id = data.get("id")
+    payment_method = data.get("payment_method")
+    payment_status = data.get("payment_status")
+    
+    if payment_method != "on_completion":
+        log_test("Pay-on-completion booking", False, 
+                 f"payment_method is '{payment_method}', expected 'on_completion'")
+        return None
+    
+    if payment_status != "unpaid":
+        log_test("Pay-on-completion booking", False, 
+                 f"payment_status is '{payment_status}', expected 'unpaid'")
+        return None
+    
+    log_test("Pay-on-completion booking", True, 
+             f"Booking ID: {booking_id}, payment_method: {payment_method}, payment_status: {payment_status}")
+    
+    created_booking_ids.append(booking_id)
+    return booking_id
+
+
+def test_7_admin_can_see_payment_fields(token: str):
+    """TEST 7: Admin can see payment fields in bookings"""
+    print("\n" + "="*80)
+    print("TEST 7: Admin can see payment fields")
+    print("="*80)
+    
+    headers = {"Authorization": f"Bearer {token}"}
+    resp = requests.get(f"{BASE_URL}/bookings", headers=headers, timeout=10)
+    
+    if resp.status_code != 200:
+        log_test("Admin can see payment fields", False, 
+                 f"Expected 200, got {resp.status_code}: {resp.text}")
+        return
+    
+    bookings = resp.json()
+    
+    if not bookings:
+        log_test("Admin can see payment fields", False, "No bookings returned")
+        return
+    
+    # Check that bookings include payment_method and payment_status fields
+    sample_booking = bookings[0]
+    has_payment_method = "payment_method" in sample_booking
+    has_payment_status = "payment_status" in sample_booking
+    
+    if not has_payment_method or not has_payment_status:
+        log_test("Admin can see payment fields", False, 
+                 f"Missing payment fields. payment_method: {has_payment_method}, payment_status: {has_payment_status}")
+        return
+    
+    # Find our test bookings
+    test_bookings = [b for b in bookings if b.get("id") in created_booking_ids]
+    
+    log_test("Admin can see payment fields", True, 
+             f"Found {len(bookings)} bookings, {len(test_bookings)} test bookings with payment fields")
+    
+    # Print sample test booking details
+    if test_bookings:
+        sample = test_bookings[0]
+        print(f"  Sample booking: {sample.get('name')}")
+        print(f"    payment_method: {sample.get('payment_method')}")
+        print(f"    payment_status: {sample.get('payment_status')}")
+        print(f"    payment_choice: {sample.get('payment_choice')}")
+
+
+def test_8_cleanup(token: str):
+    """TEST 8: Cleanup - delete all test bookings"""
+    print("\n" + "="*80)
+    print("TEST 8: Cleanup")
+    print("="*80)
+    
+    if not created_booking_ids:
+        log_test("Cleanup", True, "No bookings to clean up")
+        return
+    
+    headers = {"Authorization": f"Bearer {token}"}
+    success_count = 0
+    
+    for booking_id in created_booking_ids:
+        resp = requests.delete(f"{BASE_URL}/bookings/{booking_id}", headers=headers, timeout=10)
+        if resp.status_code == 204:
+            success_count += 1
+            print(f"  ✅ Deleted booking {booking_id}")
         else:
-            log_test("PATCH /api/bookings/{id} (valid)", False, 
-                    f"Expected 200, got {response.status_code}. Body: {response.text}")
-    except Exception as e:
-        log_test("PATCH /api/bookings/{id} (valid)", False, f"Exception: {str(e)}")
-
-
-def test_booking_update_invalid_status():
-    """Test 4b: PATCH /api/bookings/{id} with invalid status"""
-    print("\n=== Test 4b: Update Booking Status (Invalid) ===")
+            print(f"  ❌ Failed to delete booking {booking_id}: {resp.status_code}")
     
-    if not access_token or not booking_id:
-        log_test("PATCH /api/bookings/{id} (invalid status)", False, 
-                "No access token or booking ID available")
-        return
-    
-    headers = {"Authorization": f"Bearer {access_token}"}
-    update_data = {"status": "invalid_status"}
-    
-    try:
-        response = requests.patch(f"{BASE_URL}/bookings/{booking_id}", 
-                                 json=update_data, headers=headers, timeout=10)
-        
-        if response.status_code == 422:
-            log_test("PATCH /api/bookings/{id} (invalid status)", True, 
-                    "Correctly rejected invalid status")
-        else:
-            log_test("PATCH /api/bookings/{id} (invalid status)", False, 
-                    f"Expected 422, got {response.status_code}")
-    except Exception as e:
-        log_test("PATCH /api/bookings/{id} (invalid status)", False, f"Exception: {str(e)}")
-
-
-def test_booking_update_nonexistent():
-    """Test 4c: PATCH /api/bookings/{id} with non-existent ID"""
-    print("\n=== Test 4c: Update Booking Status (Non-existent) ===")
-    
-    if not access_token:
-        log_test("PATCH /api/bookings/{id} (non-existent)", False, "No access token available")
-        return
-    
-    headers = {"Authorization": f"Bearer {access_token}"}
-    update_data = {"status": "confirmed"}
-    fake_id = "00000000-0000-0000-0000-000000000000"
-    
-    try:
-        response = requests.patch(f"{BASE_URL}/bookings/{fake_id}", 
-                                 json=update_data, headers=headers, timeout=10)
-        
-        if response.status_code == 404:
-            log_test("PATCH /api/bookings/{id} (non-existent)", True, 
-                    "Correctly returned 404 for non-existent booking")
-        else:
-            log_test("PATCH /api/bookings/{id} (non-existent)", False, 
-                    f"Expected 404, got {response.status_code}")
-    except Exception as e:
-        log_test("PATCH /api/bookings/{id} (non-existent)", False, f"Exception: {str(e)}")
-
-
-def test_booking_delete_valid():
-    """Test 4d: DELETE /api/bookings/{id}"""
-    print("\n=== Test 4d: Delete Booking (Valid) ===")
-    
-    if not access_token:
-        log_test("DELETE /api/bookings/{id} (valid)", False, "No access token available")
-        return
-    
-    if not booking_id:
-        log_test("DELETE /api/bookings/{id} (valid)", False, "No booking ID available")
-        return
-    
-    headers = {"Authorization": f"Bearer {access_token}"}
-    
-    try:
-        response = requests.delete(f"{BASE_URL}/bookings/{booking_id}", 
-                                  headers=headers, timeout=10)
-        
-        if response.status_code == 204:
-            log_test("DELETE /api/bookings/{id} (valid)", True, 
-                    "Booking deleted successfully (204)")
-        else:
-            log_test("DELETE /api/bookings/{id} (valid)", False, 
-                    f"Expected 204, got {response.status_code}. Body: {response.text}")
-    except Exception as e:
-        log_test("DELETE /api/bookings/{id} (valid)", False, f"Exception: {str(e)}")
-
-
-def test_booking_delete_nonexistent():
-    """Test 4e: DELETE /api/bookings/{id} with non-existent ID"""
-    print("\n=== Test 4e: Delete Booking (Non-existent) ===")
-    
-    if not access_token:
-        log_test("DELETE /api/bookings/{id} (non-existent)", False, "No access token available")
-        return
-    
-    headers = {"Authorization": f"Bearer {access_token}"}
-    fake_id = "00000000-0000-0000-0000-000000000000"
-    
-    try:
-        response = requests.delete(f"{BASE_URL}/bookings/{fake_id}", 
-                                  headers=headers, timeout=10)
-        
-        if response.status_code == 404:
-            log_test("DELETE /api/bookings/{id} (non-existent)", True, 
-                    "Correctly returned 404 for non-existent booking")
-        else:
-            log_test("DELETE /api/bookings/{id} (non-existent)", False, 
-                    f"Expected 404, got {response.status_code}")
-    except Exception as e:
-        log_test("DELETE /api/bookings/{id} (non-existent)", False, f"Exception: {str(e)}")
+    all_deleted = success_count == len(created_booking_ids)
+    log_test("Cleanup", all_deleted, 
+             f"Deleted {success_count}/{len(created_booking_ids)} bookings")
 
 
 def print_summary():
     """Print test summary"""
-    print("\n" + "="*60)
+    print("\n" + "="*80)
     print("TEST SUMMARY")
-    print("="*60)
+    print("="*80)
     
     passed = sum(1 for r in test_results if r["passed"])
-    failed = sum(1 for r in test_results if not r["passed"])
     total = len(test_results)
     
-    print(f"\nTotal Tests: {total}")
-    print(f"Passed: {passed} ✅")
-    print(f"Failed: {failed} ❌")
-    print(f"Success Rate: {(passed/total*100):.1f}%\n")
+    print(f"\nTotal: {passed}/{total} tests passed")
+    print("\nDetailed Results:")
     
-    if failed > 0:
-        print("Failed Tests:")
-        for r in test_results:
-            if not r["passed"]:
-                print(f"  ❌ {r['test']}")
-                if r["details"]:
-                    print(f"     {r['details']}")
+    for result in test_results:
+        status = "✅ PASS" if result["passed"] else "❌ FAIL"
+        print(f"{status}: {result['test']}")
+        if result["details"]:
+            print(f"  {result['details']}")
     
-    return failed == 0
+    if passed == total:
+        print("\n🎉 ALL TESTS PASSED!")
+        return 0
+    else:
+        print(f"\n⚠️  {total - passed} test(s) failed")
+        return 1
+
+
+def main():
+    """Run all tests"""
+    print("="*80)
+    print("ACT QBN CARPET CLEANING - STRIPE PAYMENT BACKEND TESTS")
+    print("="*80)
+    print(f"Base URL: {BASE_URL}")
+    print(f"Admin: {ADMIN_EMAIL}")
+    
+    try:
+        # Get admin token
+        token = get_admin_token()
+        
+        # TEST 1: Create ONLINE booking
+        booking_id = test_1_create_online_booking()
+        
+        # TEST 2: Create checkout session
+        session_id = test_2_create_checkout(booking_id)
+        
+        # TEST 3: Payment status polling
+        test_3_payment_status_polling(session_id, booking_id, token)
+        
+        # TEST 4: Guard - zero amount
+        test_4_guard_zero_amount()
+        
+        # TEST 5: Guard - unknown booking
+        test_5_guard_unknown_booking()
+        
+        # TEST 6: Pay-on-completion booking
+        test_6_pay_on_completion_booking()
+        
+        # TEST 7: Admin can see payment fields
+        test_7_admin_can_see_payment_fields(token)
+        
+        # TEST 8: Cleanup
+        test_8_cleanup(token)
+        
+        # Print summary
+        exit_code = print_summary()
+        sys.exit(exit_code)
+        
+    except Exception as e:
+        print(f"\n❌ FATAL ERROR: {e}")
+        import traceback
+        traceback.print_exc()
+        sys.exit(1)
 
 
 if __name__ == "__main__":
-    print("="*60)
-    print("ACT QBN Carpet Cleaning - Backend API Test Suite")
-    print("="*60)
-    print(f"Backend URL: {BASE_URL}")
-    print(f"Admin Email: {ADMIN_EMAIL}")
-    print(f"Test Time: {datetime.now().isoformat()}")
-    
-    # Run all tests in order
-    test_health_endpoint()
-    test_root_endpoint()
-    test_booking_creation_valid()
-    test_booking_validation()
-    test_auth_login_valid()
-    test_auth_login_invalid()
-    test_auth_me()
-    test_bookings_list_unauthorized()
-    test_bookings_list_authorized()
-    test_booking_update_valid()
-    test_booking_update_invalid_status()
-    test_booking_update_nonexistent()
-    test_booking_delete_valid()
-    test_booking_delete_nonexistent()
-    
-    # Print summary
-    all_passed = print_summary()
-    
-    sys.exit(0 if all_passed else 1)
+    main()

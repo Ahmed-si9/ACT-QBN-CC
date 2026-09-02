@@ -1,6 +1,6 @@
 import { useState, useEffect, useRef, useCallback } from "react";
 import { motion } from "framer-motion";
-import { Mail, Phone, MapPin, Send, Loader2 } from "lucide-react";
+import { Mail, Phone, MapPin, Send, Loader2, CreditCard, Banknote } from "lucide-react";
 import { toast } from "sonner";
 import axios from "axios";
 import QuoteCalculator from "@/components/QuoteCalculator";
@@ -27,6 +27,8 @@ const Contact = () => {
     service: serviceOptions[0],
     preferred_date: "",
     preferred_time: "",
+    payment_method: "on_completion",
+    payment_choice: "cash_eftpos",
     message: "",
   });
   const [submitting, setSubmitting] = useState(false);
@@ -83,9 +85,24 @@ const Contact = () => {
       toast.error("Please choose an available time slot for your selected day.");
       return;
     }
+    const quote = quoteRef.current;
+    if (form.payment_method === "online" && !(quote.quote_total > 0)) {
+      toast.error("To pay online, add items to the quote estimator so we know the amount. Or choose Pay on Completion.");
+      return;
+    }
     setSubmitting(true);
     try {
-      await axios.post(`${API}/bookings`, { ...form, ...quoteRef.current });
+      const { data: booking } = await axios.post(`${API}/bookings`, { ...form, ...quote });
+
+      if (form.payment_method === "online") {
+        const { data } = await axios.post(`${API}/payments/checkout`, {
+          booking_id: booking.id,
+          origin_url: window.location.origin,
+        });
+        window.location.href = data.checkout_url; // redirect to Stripe
+        return;
+      }
+
       toast.success("Booking request received! We'll confirm your clean shortly.");
       setForm({
         name: "",
@@ -94,12 +111,15 @@ const Contact = () => {
         service: serviceOptions[0],
         preferred_date: "",
         preferred_time: "",
+        payment_method: "on_completion",
+        payment_choice: "cash_eftpos",
         message: "",
       });
       setSlots([]);
       setTakenSlots([]);
     } catch (err) {
-      toast.error("Could not submit your booking. Please call us on 0466 429 772.");
+      const detail = err?.response?.data?.detail;
+      toast.error(typeof detail === "string" ? detail : "Could not submit your booking. Please call us on 0466 429 772.");
     } finally {
       setSubmitting(false);
     }
@@ -316,6 +336,49 @@ const Contact = () => {
 
             <QuoteCalculator onChange={handleQuoteChange} />
 
+            <div data-testid="payment-method-block">
+              <p className="text-xs uppercase tracking-[0.25em] text-[#94A3B8] mb-3">Payment Method</p>
+              <div className="grid sm:grid-cols-2 gap-4">
+                <button
+                  type="button"
+                  data-testid="payment-online-option"
+                  onClick={() => setForm((f) => ({ ...f, payment_method: "online", payment_choice: "card_applepay" }))}
+                  aria-pressed={form.payment_method === "online"}
+                  className={`text-left rounded-2xl border p-5 transition-colors duration-200 ${
+                    form.payment_method === "online"
+                      ? "border-[#4CC9F0] bg-[#4CC9F0]/10 shadow-[0_0_18px_rgba(76,201,240,0.3)]"
+                      : "border-white/15 hover:border-[#4CC9F0]/60"
+                  }`}
+                >
+                  <span className="flex items-center gap-2 font-display font-bold text-sm text-[#E0F2FE]">
+                    <CreditCard className="w-4 h-4 text-[#4CC9F0]" /> Pay Online Now
+                  </span>
+                  <span className="block text-xs text-[#94A3B8] mt-1.5">Card · Apple Pay · secure Stripe checkout</span>
+                </button>
+                <button
+                  type="button"
+                  data-testid="payment-on-completion-option"
+                  onClick={() => setForm((f) => ({ ...f, payment_method: "on_completion", payment_choice: "cash_eftpos" }))}
+                  aria-pressed={form.payment_method === "on_completion"}
+                  className={`text-left rounded-2xl border p-5 transition-colors duration-200 ${
+                    form.payment_method === "on_completion"
+                      ? "border-[#4CC9F0] bg-[#4CC9F0]/10 shadow-[0_0_18px_rgba(76,201,240,0.3)]"
+                      : "border-white/15 hover:border-[#4CC9F0]/60"
+                  }`}
+                >
+                  <span className="flex items-center gap-2 font-display font-bold text-sm text-[#E0F2FE]">
+                    <Banknote className="w-4 h-4 text-[#4CC9F0]" /> Pay on Completion
+                  </span>
+                  <span className="block text-xs text-[#94A3B8] mt-1.5">Cash · EFTPOS after the clean</span>
+                </button>
+              </div>
+              {form.payment_method === "online" && (
+                <p className="mt-3 text-xs text-[#94A3B8]">
+                  You'll be redirected to Stripe's secure checkout to pay your estimated total after submitting.
+                </p>
+              )}
+            </div>
+
             <button
               data-testid="booking-submit-button"
               type="submit"
@@ -324,11 +387,12 @@ const Contact = () => {
             >
               {submitting ? (
                 <>
-                  <Loader2 className="w-4 h-4 animate-spin" /> Sending...
+                  <Loader2 className="w-4 h-4 animate-spin" /> {form.payment_method === "online" ? "Redirecting to payment..." : "Sending..."}
                 </>
               ) : (
                 <>
-                  <Send className="w-4 h-4" /> Request Booking
+                  {form.payment_method === "online" ? <CreditCard className="w-4 h-4" /> : <Send className="w-4 h-4" />}
+                  {form.payment_method === "online" ? "Book & Pay Online" : "Request Booking"}
                 </>
               )}
             </button>
