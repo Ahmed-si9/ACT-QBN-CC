@@ -1,0 +1,102 @@
+@import url('https://fonts.googleapis.com/css2?family=Outfit:wght@400;600;700;800;900&family=Manrope:wght@300;400;500;600;700&display=swap');
+
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+body {
+    margin: 0;
+    background-color: #0B1320;
+    color: #E0F2FE;
+    font-family: 'Manrope', sans-serif;
+    -webkit-font-smoothing: antialiased;
+    -moz-osx-font-smoothing: grayscale;
+}
+
+::selection {
+    background: rgba(76, 201, 240, 0.35);
+    color: #ffffff;
+}
+
+html {
+    scroll-behavior: smooth;
+}
+
+@layer utilities {
+    .font-display {
+        font-family: 'Outfit', sans-serif;
+    }
+
+    .metallic-text {
+        background: linear-gradient(180deg, #ffffff 0%, #dbeafe 35%, #93c5fd 60%, #64748b 100%);
+        -webkit-background-clip: text;
+        background-clip: text;
+        color: transparent;
+        filter: drop-shadow(0 2px 2px rgba(0, 0, 0, 0.8)) drop-shadow(0 0 24px rgba(76, 201, 240, 0.25));
+    }
+
+    .metallic-text-sm {
+        background: linear-gradient(180deg, #f8fafc 0%, #cbd5e1 55%, #94a3b8 100%);
+        -webkit-background-clip: text;
+        background-clip: text;
+        color: transparent;
+    }
+
+    .glass-panel {
+        background: rgba(255, 255, 255, 0.04);
+        backdrop-filter: blur(20px);
+        -webkit-backdrop-filter: blur(20px);
+        border: 1px solid rgba(255, 255, 255, 0.1);
+        box-shadow: 0 8px 32px rgba(0, 0, 0, 0.35);
+    }
+
+    .neon-card {
+        transition: border-color 0.35s ease, box-shadow 0.35s ease, transform 0.35s ease;
+    }
+
+    .neon-card:hover {
+        border-color: rgba(76, 201, 240, 0.8);
+        box-shadow: 0 0 30px rgba(76, 201, 240, 0.35), inset 0 0 18px rgba(76, 201, 240, 0.08);
+        transform: translateY(-6px);
+    }
+
+    .neon-btn {
+        background: linear-gradient(135deg, #00B4D8 0%, #4CC9F0 100%);
+        box-shadow: 0 0 24px rgba(76, 201, 240, 0.45), inset 0 1px 0 rgba(255, 255, 255, 0.35);
+        transition: box-shadow 0.3s ease, transform 0.3s ease, filter 0.3s ease;
+    }
+
+    .neon-btn:hover {
+        box-shadow: 0 0 44px rgba(76, 201, 240, 0.75), inset 0 1px 0 rgba(255, 255, 255, 0.4);
+        transform: translateY(-2px);
+        filter: brightness(1.1);
+    }
+
+    .glow-input {
+        background: rgba(255, 255, 255, 0.05);
+        border: 1px solid rgba(255, 255, 255, 0.15);
+        color: #E0F2FE;
+        transition: border-color 0.3s ease, box-shadow 0.3s ease;
+    }
+
+    .glow-input::placeholder {
+        color: rgba(148, 163, 184, 0.6);
+    }
+
+    .glow-input:focus {
+        outline: none;
+        border-color: #4CC9F0;
+        box-shadow: 0 0 0 1px #4CC9F0, 0 0 18px rgba(76, 201, 240, 0.3);
+    }
+
+    select.glow-input option {
+        background-color: #0B1320;
+        color: #E0F2FE;
+    }
+}
+
+@layer base {
+    [data-debug-wrapper="true"] {
+        display: contents !important;
+    }
+}
